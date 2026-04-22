@@ -199,8 +199,11 @@ const INDEX_HTML: &str = r##"<!doctype html>
               <th>组合</th>
               <th>开仓价差 (bps)</th>
               <th>平仓价差 (bps)</th>
+              <th>当前费率</th>
               <th>费率差 (bps)</th>
+              <th>指数价格</th>
               <th>指数价差 (bps)</th>
+              <th>24h 成交额</th>
               <th>更新时间</th>
             </tr>
           </thead>
@@ -222,6 +225,41 @@ const INDEX_HTML: &str = r##"<!doctype html>
       return value == null ? "-" : Number(value).toFixed(2);
     }
 
+    function formatPrice(value) {
+      if (value == null) {
+        return "-";
+      }
+      const abs = Math.abs(Number(value));
+      if (abs >= 1000) {
+        return Number(value).toFixed(2);
+      }
+      if (abs >= 1) {
+        return Number(value).toFixed(4);
+      }
+      if (abs >= 0.01) {
+        return Number(value).toFixed(6);
+      }
+      return Number(value).toFixed(8);
+    }
+
+    function formatRate(value) {
+      if (value == null) {
+        return "-";
+      }
+      return `${(Number(value) * 100).toFixed(4)}%`;
+    }
+
+    function formatVolume(value) {
+      if (value == null) {
+        return "-";
+      }
+      return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function formatPairValue(left, right, formatter) {
+      return `${formatter(left)} / ${formatter(right)}`;
+    }
+
     function formatTime(ts) {
       return ts ? new Date(ts).toLocaleString() : "-";
     }
@@ -238,8 +276,11 @@ const INDEX_HTML: &str = r##"<!doctype html>
           <td>${item.pair.left.exchange}/${item.pair.left.instrument.market_kind} -> ${item.pair.right.exchange}/${item.pair.right.instrument.market_kind}</td>
           <td>${formatNumber(item.metrics.open_spread_bps)}</td>
           <td>${formatNumber(item.metrics.close_spread_bps)}</td>
+          <td>${formatPairValue(item.metrics.left_funding_rate, item.metrics.right_funding_rate, formatRate)}</td>
           <td>${formatNumber(item.metrics.funding_diff_bps)}</td>
+          <td>${formatPairValue(item.metrics.left_index_price, item.metrics.right_index_price, formatPrice)}</td>
           <td>${formatNumber(item.metrics.index_diff_bps)}</td>
+          <td>${formatPairValue(item.metrics.left_volume_24h, item.metrics.right_volume_24h, formatVolume)}</td>
           <td>${formatTime(item.metrics.updated_at_ms)}</td>
         `;
         tr.onclick = () => {
@@ -268,6 +309,31 @@ const INDEX_HTML: &str = r##"<!doctype html>
         <h2>${payload.item.pair.canonical_symbol}</h2>
         <p class="muted">${payload.item.pair.left.exchange}/${payload.item.pair.left.instrument.market_kind} -> ${payload.item.pair.right.exchange}/${payload.item.pair.right.instrument.market_kind}</p>
         <div class="detail-section">
+          <h3>当前指标</h3>
+          <div class="list">
+            <div class="row">
+              <span>当前资金费率</span>
+              <span>${formatRate(payload.item.metrics.left_funding_rate)} / ${formatRate(payload.item.metrics.right_funding_rate)}</span>
+            </div>
+            <div class="row">
+              <span>费率差</span>
+              <span>${formatNumber(payload.item.metrics.funding_diff_bps)} bps</span>
+            </div>
+            <div class="row">
+              <span>指数价格</span>
+              <span>${formatPrice(payload.item.metrics.left_index_price)} / ${formatPrice(payload.item.metrics.right_index_price)}</span>
+            </div>
+            <div class="row">
+              <span>指数价差</span>
+              <span>${formatNumber(payload.item.metrics.index_diff_bps)} bps</span>
+            </div>
+            <div class="row">
+              <span>24h 成交额</span>
+              <span>${formatVolume(payload.item.metrics.left_volume_24h)} / ${formatVolume(payload.item.metrics.right_volume_24h)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="detail-section">
           <h3>最近价差点位</h3>
           <div class="list">
             ${payload.spread_history.slice(-8).reverse().map(point => `
@@ -284,7 +350,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
             ${payload.left_funding_history.slice(-6).reverse().map(item => `
               <div class="row">
                 <span>${formatTime(item.settled_at_ms)}</span>
-                <span>${formatNumber(item.rate)}</span>
+                <span>${formatRate(item.rate)}</span>
               </div>
             `).join("") || '<div class="muted">暂无结算记录</div>'}
           </div>
@@ -295,7 +361,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
             ${payload.right_funding_history.slice(-6).reverse().map(item => `
               <div class="row">
                 <span>${formatTime(item.settled_at_ms)}</span>
-                <span>${formatNumber(item.rate)}</span>
+                <span>${formatRate(item.rate)}</span>
               </div>
             `).join("") || '<div class="muted">暂无结算记录</div>'}
           </div>

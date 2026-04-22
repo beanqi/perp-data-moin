@@ -240,7 +240,7 @@ fn compute_pair_view(pair: &MonitorPair, snapshots: &SnapshotStore) -> MonitorPa
         right_funding_rate: right_snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.funding_rate),
-        funding_diff_bps: diff_bps(
+        funding_diff_bps: rate_diff_bps(
             left_snapshot
                 .as_ref()
                 .and_then(|snapshot| snapshot.funding_rate),
@@ -254,7 +254,7 @@ fn compute_pair_view(pair: &MonitorPair, snapshots: &SnapshotStore) -> MonitorPa
         right_index_price: right_snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.index_price),
-        index_diff_bps: diff_bps(
+        index_diff_bps: price_diff_bps(
             left_snapshot
                 .as_ref()
                 .and_then(|snapshot| snapshot.index_price),
@@ -288,7 +288,13 @@ fn spread_bps(entry_price: Option<f64>, exit_price: Option<f64>) -> Option<f64> 
     Some((exit_price - entry_price) / entry_price * 10_000.0)
 }
 
-fn diff_bps(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+fn rate_diff_bps(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    let left = left?;
+    let right = right?;
+    Some((right - left) * 10_000.0)
+}
+
+fn price_diff_bps(left: Option<f64>, right: Option<f64>) -> Option<f64> {
     let left = left?;
     let right = right?;
     if left.abs() < f64::EPSILON {
