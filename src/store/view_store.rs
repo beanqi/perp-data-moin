@@ -155,14 +155,9 @@ fn sort_pair_views(views: &mut [MonitorPairView], sort_by: DisplaySort) {
                 .unwrap_or_default();
             right_value.total_cmp(&left_value)
         }),
-        DisplaySort::UpdatedAt => views.sort_by(|left, right| {
-            right
-                .metrics
-                .updated_at_ms
-                .cmp(&left.metrics.updated_at_ms)
-        }),
-        DisplaySort::Symbol => {
-            views.sort_by(|left, right| left.pair.canonical_symbol.cmp(&right.pair.canonical_symbol))
-        }
+        DisplaySort::UpdatedAt => views
+            .sort_by(|left, right| right.metrics.updated_at_ms.cmp(&left.metrics.updated_at_ms)),
+        DisplaySort::Symbol => views
+            .sort_by(|left, right| left.pair.canonical_symbol.cmp(&right.pair.canonical_symbol)),
     }
 }

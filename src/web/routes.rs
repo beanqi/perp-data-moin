@@ -1,8 +1,8 @@
 use axum::Json;
+use axum::Router;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse};
 use axum::routing::get;
-use axum::Router;
 
 use crate::web::dto::{ExchangeHealthView, HealthResponse, PairDetailResponse, PairListResponse};
 use crate::web::server::WebState;

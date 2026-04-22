@@ -19,7 +19,10 @@ impl WebState {
         summary_rx: watch::Receiver<Arc<SummaryView>>,
         query_tx: mpsc::Sender<AggregatorQuery>,
     ) -> Self {
-        Self { summary_rx, query_tx }
+        Self {
+            summary_rx,
+            query_tx,
+        }
     }
 
     pub fn summary(&self) -> Arc<SummaryView> {
@@ -28,7 +31,10 @@ impl WebState {
 
     pub async fn pair_detail(&self, pair_id: String) -> PairDetailView {
         let (respond_to, rx) = oneshot::channel();
-        let query = AggregatorQuery::PairDetail { pair_id, respond_to };
+        let query = AggregatorQuery::PairDetail {
+            pair_id,
+            respond_to,
+        };
 
         if self.query_tx.send(query).await.is_err() {
             return PairDetailView::default();

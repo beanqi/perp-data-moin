@@ -42,7 +42,9 @@ pub async fn run() -> Result<(), AppError> {
                     "exchange adapter started"
                 );
             }
-            Err(err) => warn!(exchange = %adapter.id(), error = %err, "exchange adapter failed to start"),
+            Err(err) => {
+                warn!(exchange = %adapter.id(), error = %err, "exchange adapter failed to start")
+            }
         }
     }
     drop(tx);

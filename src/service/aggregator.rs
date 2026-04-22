@@ -90,7 +90,10 @@ async fn run_aggregator(
 
 fn handle_query(query: AggregatorQuery, state: &RuntimeState) {
     match query {
-        AggregatorQuery::PairDetail { pair_id, respond_to } => {
+        AggregatorQuery::PairDetail {
+            pair_id,
+            respond_to,
+        } => {
             let _ = respond_to.send(state.build_pair_detail(&pair_id));
         }
     }
@@ -103,6 +106,7 @@ fn apply_event(
     dirty_pairs: &mut HashSet<String>,
     snapshot_dirty: &mut bool,
 ) {
+    tracing::info!(?event, "received exchange event");
     match event {
         ExchangeEvent::TopOfBook {
             market,
@@ -198,10 +202,9 @@ fn publish_if_dirty(
     for pair_id in dirty_pairs.drain() {
         if let Some(pair) = state.pair_definition(&pair_id).cloned() {
             let view = compute_pair_view(&pair, snapshots);
-            if let (Some(open_spread_bps), Some(close_spread_bps)) = (
-                view.metrics.open_spread_bps,
-                view.metrics.close_spread_bps,
-            ) {
+            if let (Some(open_spread_bps), Some(close_spread_bps)) =
+                (view.metrics.open_spread_bps, view.metrics.close_spread_bps)
+            {
                 state.history.record_spread(
                     pair_id.clone(),
                     open_spread_bps,
@@ -231,20 +234,40 @@ fn compute_pair_view(pair: &MonitorPair, snapshots: &SnapshotStore) -> MonitorPa
             left_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
             right_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
         ),
-        left_funding_rate: left_snapshot.as_ref().and_then(|snapshot| snapshot.funding_rate),
-        right_funding_rate: right_snapshot.as_ref().and_then(|snapshot| snapshot.funding_rate),
+        left_funding_rate: left_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.funding_rate),
+        right_funding_rate: right_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.funding_rate),
         funding_diff_bps: diff_bps(
-            left_snapshot.as_ref().and_then(|snapshot| snapshot.funding_rate),
-            right_snapshot.as_ref().and_then(|snapshot| snapshot.funding_rate),
+            left_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.funding_rate),
+            right_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.funding_rate),
         ),
-        left_index_price: left_snapshot.as_ref().and_then(|snapshot| snapshot.index_price),
-        right_index_price: right_snapshot.as_ref().and_then(|snapshot| snapshot.index_price),
+        left_index_price: left_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.index_price),
+        right_index_price: right_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.index_price),
         index_diff_bps: diff_bps(
-            left_snapshot.as_ref().and_then(|snapshot| snapshot.index_price),
-            right_snapshot.as_ref().and_then(|snapshot| snapshot.index_price),
+            left_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.index_price),
+            right_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.index_price),
         ),
-        left_volume_24h: left_snapshot.as_ref().and_then(|snapshot| snapshot.volume_24h),
-        right_volume_24h: right_snapshot.as_ref().and_then(|snapshot| snapshot.volume_24h),
+        left_volume_24h: left_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.volume_24h),
+        right_volume_24h: right_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.volume_24h),
         updated_at_ms,
     };
 

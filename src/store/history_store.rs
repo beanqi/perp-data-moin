@@ -31,8 +31,13 @@ impl HistoryStore {
     pub fn record_funding(&mut self, record: FundingSettlementRecord) {
         let queue = self.funding.entry(record.market_key.clone()).or_default();
         let settled_at_ms = record.settled_at_ms;
+        if queue.iter().any(|item| item.settled_at_ms == settled_at_ms) {
+            return;
+        }
         queue.push_back(record);
-        prune_queue(queue, settled_at_ms - FUNDING_WINDOW_MS, |item| item.settled_at_ms);
+        prune_queue(queue, settled_at_ms - FUNDING_WINDOW_MS, |item| {
+            item.settled_at_ms
+        });
     }
 
     pub fn spread_points(&self, pair_id: &str) -> Vec<SpreadPoint> {
