@@ -7,7 +7,10 @@ mod service;
 mod store;
 mod web;
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
@@ -52,7 +55,11 @@ fn init_logging() -> Result<WorkerGuard, std::io::Error> {
     Ok(guard)
 }
 
-fn prune_old_log_files(log_dir: &Path, file_name: &str, retain: usize) -> Result<(), std::io::Error> {
+fn prune_old_log_files(
+    log_dir: &Path,
+    file_name: &str,
+    retain: usize,
+) -> Result<(), std::io::Error> {
     if retain == 0 {
         return Ok(());
     }
