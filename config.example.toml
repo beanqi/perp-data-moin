@@ -1,0 +1,5 @@
+[web]
+bind = "0.0.0.0:8080"
+
+[display]
+sort_by = "open_spread_abs"
