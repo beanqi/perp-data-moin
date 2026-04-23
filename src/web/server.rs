@@ -4,8 +4,8 @@ use std::sync::Arc;
 use axum::Router;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::error::AppError;
 use crate::domain::ExchangeId;
+use crate::error::AppError;
 use crate::service::aggregator::AggregatorQuery;
 use crate::store::view_store::{PairDetailView, SummaryView};
 

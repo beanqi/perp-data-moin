@@ -11,11 +11,13 @@ pub trait ExchangeAdapter: Send + Sync {
     async fn spawn(&self, tx: EventSender) -> Result<Vec<JoinHandle<()>>, String>;
 }
 
+#[allow(dead_code)]
 pub struct NoopExchangeAdapter {
     id: ExchangeId,
 }
 
 impl NoopExchangeAdapter {
+    #[allow(dead_code)]
     pub fn new(id: ExchangeId) -> Self {
         Self { id }
     }
