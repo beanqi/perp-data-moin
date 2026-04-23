@@ -6,7 +6,7 @@ bind = "0.0.0.0:8080"
 # 可选值：binance、bybit、gate、kucoin、bitget、okx、huobi、aster
 # enabled_exchanges = []
 # 例如只监控部分交易所时，可以改成：
-enabled_exchanges = ["kucoin", "okx"]
+enabled_exchanges = ["gate", "okx", "bybit"]
 
 [display]
 sort_by = "open_spread_abs"
