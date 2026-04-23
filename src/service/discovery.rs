@@ -1,3 +1,4 @@
+use futures_util::future::join_all;
 use tracing::warn;
 
 use crate::domain::MarketRef;
@@ -15,9 +16,15 @@ pub async fn discover_markets(
     aligner: &SymbolAligner,
 ) -> DiscoverySummary {
     let mut summary = DiscoverySummary::default();
+    let discovered = join_all(adapters.iter().map(|adapter| async move {
+        let id = adapter.id();
+        let result = adapter.discover_markets().await;
+        (id, result)
+    }))
+    .await;
 
-    for adapter in adapters {
-        match adapter.discover_markets().await {
+    for (exchange_id, result) in discovered {
+        match result {
             Ok(markets) => {
                 for market in markets {
                     match aligner.align(&market) {
@@ -34,7 +41,7 @@ pub async fn discover_markets(
                 }
             }
             Err(err) => {
-                let message = format!("failed to discover markets from {}: {err}", adapter.id());
+                let message = format!("failed to discover markets from {}: {err}", exchange_id);
                 warn!("{message}");
                 summary.warnings.push(message);
             }
