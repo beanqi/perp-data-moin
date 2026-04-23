@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rebuild the embedded monitoring page into a responsive dashboard with better styling, client-side sorting and filtering, and a spread-history line chart.
+**Goal:** Rebuild the embedded monitoring page into a responsive dashboard with better styling, client-side sorting, filtering, pagination, percentage-based spread display, and a spread-history line chart.
 
-**Architecture:** Keep the current Axum routes and DTOs unchanged and replace the embedded HTML/CSS/JavaScript in the index route with a richer browser-rendered UI. Store list, filter, sort, selection, and health state entirely on the client and render desktop and mobile views from the same payload.
+**Architecture:** Keep the current Axum routes and DTOs unchanged and replace the embedded HTML/CSS/JavaScript in the index route with a richer browser-rendered UI. Store list, filter, sort, pagination, selection, and health state entirely on the client and render desktop and mobile views from the same payload, while converting spread-style values from `bps` to percentage formatting only at presentation time.
 
 **Tech Stack:** Rust, Axum, inline HTML/CSS/vanilla JavaScript, inline SVG chart rendering
 
@@ -79,10 +79,10 @@ git add src/web/routes.rs
 git commit -m "feat: redesign monitor page shell"
 ```
 
-### Task 2: Add client-side state, sorting, and filtering
+### Task 2: Add client-side state, sorting, filtering, and pagination
 
 **Files:**
-- Modify: `src/web/routes.rs`
+- Modify: `src/web/index.html`
 - Verify: `cargo check`
 
 - [ ] **Step 1: Define client-side state for list rendering**
@@ -96,9 +96,11 @@ const state = {
   selectedPairId: null,
   sortKey: "open_spread_abs",
   sortDir: "desc",
+  currentPage: 1,
+  pageSize: 20,
   searchTerm: "",
+  exchange: "all",
   pairKind: "all",
-  exchangeFilter: new Set(),
   onlyFundingDiff: false,
   onlyFresh: false,
   lastPairsAt: null,
@@ -131,7 +133,23 @@ function matchesFilters(item) {
 }
 ```
 
-- [ ] **Step 3: Implement sortable metric accessors**
+- [ ] **Step 3: Add pagination helpers after sorting**
+
+Add helpers that paginate the filtered list:
+
+```js
+function paginatedPairs(items) {
+  const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+  state.currentPage = Math.min(state.currentPage, totalPages);
+  const start = (state.currentPage - 1) * state.pageSize;
+  return {
+    totalPages,
+    pageItems: items.slice(start, start + state.pageSize),
+  };
+}
+```
+
+- [ ] **Step 4: Implement sortable metric accessors**
 
 Add a map of sort accessors and apply them before rendering:
 
@@ -147,43 +165,71 @@ const sorters = {
 };
 ```
 
-- [ ] **Step 4: Wire controls and table-header sorting to shared render logic**
+- [ ] **Step 5: Wire controls, table-header sorting, and pagination to shared render logic**
 
 Connect:
 
 ```js
 searchInput.addEventListener("input", event => {
   state.searchTerm = event.target.value.trim().toLowerCase();
+  state.currentPage = 1;
   render();
 });
 
 sortSelect.addEventListener("change", event => {
   state.sortKey = event.target.value;
+  state.currentPage = 1;
   render();
 });
 ```
 
-Also attach click handlers to sortable desktop headers so header interactions and the dropdown stay in sync.
+Also attach click handlers to sortable desktop headers so header interactions and the dropdown stay in sync, and add event handlers for first/previous/page-number/next/last pagination controls.
 
-- [ ] **Step 5: Re-run compile verification**
+- [ ] **Step 6: Re-run compile verification**
 
 Run: `cargo check`
 Expected: the project still compiles after the browser-state logic is added
 
-- [ ] **Step 6: Commit interactive list behavior**
+- [ ] **Step 7: Commit interactive list behavior**
 
 ```bash
-git add src/web/routes.rs
-git commit -m "feat: add monitor sorting and filtering"
+git add src/web/index.html
+git commit -m "feat: add monitor sorting filtering and pagination"
 ```
 
-### Task 3: Add mobile cards, detail summary, and spread-history chart
+### Task 3: Add desktop balance, percentage formatting, mobile cards, detail summary, and spread-history chart
 
 **Files:**
-- Modify: `src/web/routes.rs`
+- Modify: `src/web/index.html`
 - Verify: `cargo check`
 
-- [ ] **Step 1: Render mobile cards from the same filtered list**
+- [ ] **Step 1: Make the desktop list and detail panels share the same overall height**
+
+Update the desktop layout so both panels use the same container height and scroll internally:
+
+```css
+.list-panel,
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: min(78vh, 920px);
+}
+```
+
+- [ ] **Step 2: Convert spread-style values from `bps` to percentage formatting**
+
+Add presentation helpers that convert:
+
+```js
+function formatSignedPercentFromBps(value) {
+  const percent = Number(value) / 100;
+  return `${percent.toFixed(3)}%`;
+}
+```
+
+Use this helper for open spread, close spread, funding difference, index difference, summary cards, and chart labels.
+
+- [ ] **Step 3: Render mobile cards from the same paginated list**
 
 Add a mobile card container and render cards like:
 
@@ -201,7 +247,7 @@ function renderMobileCards(items) {
 }
 ```
 
-- [ ] **Step 2: Restructure the detail panel into summary blocks**
+- [ ] **Step 4: Restructure the detail panel into summary blocks**
 
 Render overview cards first, followed by chart and funding sections:
 
@@ -214,7 +260,7 @@ detailPanel.innerHTML = `
 `;
 ```
 
-- [ ] **Step 3: Implement the inline SVG line chart**
+- [ ] **Step 5: Implement the inline SVG line chart with percentage labels**
 
 Add a helper that renders open and close spread paths:
 
@@ -232,25 +278,26 @@ function renderSpreadChart(points) {
 }
 ```
 
-- [ ] **Step 4: Keep selection stable across list refreshes**
+- [ ] **Step 6: Keep selection stable across list refreshes and page changes**
 
-Ensure `loadPairs()` preserves the selected pair when possible and only falls back to the first filtered item when the current selection disappears.
+Ensure `loadPairs()` preserves the selected pair when possible and only falls back to the first item on the current page when the current selection disappears.
 
-- [ ] **Step 5: Re-run compile verification**
+- [ ] **Step 7: Re-run compile verification**
 
 Run: `cargo check`
 Expected: the project still compiles after the detail-panel and chart work
 
-- [ ] **Step 6: Commit detail and chart improvements**
+- [ ] **Step 8: Commit detail and chart improvements**
 
 ```bash
-git add src/web/routes.rs
-git commit -m "feat: add responsive detail views and spread chart"
+git add src/web/index.html
+git commit -m "feat: add pagination layout balance and percent display"
 ```
 
 ### Task 4: Polish states, run verification, and check requirements coverage
 
 **Files:**
+- Modify: `src/web/index.html`
 - Modify: `src/web/routes.rs`
 - Verify: `cargo fmt`, `cargo check`
 
@@ -285,12 +332,15 @@ Check these items manually against `docs/superpowers/specs/2026-04-23-monitor-ui
 - refreshed visual design
 - sort controls
 - filter controls
+- pagination controls
+- percent-based spread display
+- balanced desktop panel heights
 - detail-panel reorganization
 - spread-history line chart
 
 - [ ] **Step 5: Commit the polished dashboard**
 
 ```bash
-git add src/web/routes.rs
+git add src/web/index.html src/web/routes.rs
 git commit -m "feat: polish responsive monitor dashboard"
 ```

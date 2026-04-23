@@ -4,9 +4,9 @@ bind = "0.0.0.0:8080"
 [monitor]
 # 留空表示启用全部交易所。
 # 可选值：binance、bybit、gate、kucoin、bitget、okx、huobi、aster
-enabled_exchanges = []
+# enabled_exchanges = []
 # 例如只监控部分交易所时，可以改成：
-# enabled_exchanges = ["binance", "bybit", "okx"]
+enabled_exchanges = ["kucoin", "okx"]
 
 [display]
 sort_by = "open_spread_abs"

@@ -106,7 +106,7 @@ fn apply_event(
     dirty_pairs: &mut HashSet<String>,
     snapshot_dirty: &mut bool,
 ) {
-    tracing::info!(?event, "received exchange event");
+    // tracing::info!(?event, "received exchange event");
     match event {
         ExchangeEvent::TopOfBook {
             market,

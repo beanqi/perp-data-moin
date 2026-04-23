@@ -1,0 +1,1876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Perp Data Monitor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3eee6;
+      --bg-strong: #e9dfd2;
+      --panel: rgba(255, 252, 246, 0.94);
+      --panel-solid: #fffaf1;
+      --ink: #172126;
+      --ink-soft: #324047;
+      --muted: #6f797e;
+      --line: #ded6ca;
+      --line-strong: #c8beb0;
+      --brand: #0f766e;
+      --brand-strong: #0b5f59;
+      --brand-soft: #d7efea;
+      --amber: #b7791f;
+      --amber-soft: #f7e4bf;
+      --danger: #b42318;
+      --green: #12765d;
+      --shadow: 0 24px 70px rgba(39, 35, 29, 0.12);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --panel-height: min(76vh, 920px);
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 8% 8%, rgba(15, 118, 110, 0.18), transparent 32%),
+        radial-gradient(circle at 88% 0%, rgba(183, 121, 31, 0.17), transparent 28%),
+        linear-gradient(145deg, #fbf6ee 0%, var(--bg) 46%, #ece3d7 100%);
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      content: "";
+      opacity: 0.52;
+      background-image:
+        linear-gradient(rgba(23, 33, 38, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(23, 33, 38, 0.045) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(180deg, black 0%, transparent 74%);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    .app-shell {
+      width: min(1480px, 100%);
+      margin: 0 auto;
+      padding: 28px 22px 56px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 30px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-xl);
+      background:
+        linear-gradient(135deg, rgba(255, 252, 246, 0.96), rgba(247, 228, 191, 0.64)),
+        radial-gradient(circle at 92% 22%, rgba(15, 118, 110, 0.2), transparent 32%);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      position: absolute;
+      right: -90px;
+      bottom: -120px;
+      width: 340px;
+      height: 340px;
+      content: "";
+      border: 1px solid rgba(15, 118, 110, 0.22);
+      border-radius: 50%;
+      background: rgba(15, 118, 110, 0.07);
+    }
+
+    .hero-content,
+    .hero-status {
+      position: relative;
+      z-index: 1;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      width: fit-content;
+      margin-bottom: 16px;
+      padding: 7px 11px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      border-radius: 999px;
+      color: var(--brand-strong);
+      background: rgba(215, 239, 234, 0.8);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 820px;
+      font-size: clamp(38px, 6vw, 80px);
+      line-height: 0.93;
+      letter-spacing: -0.07em;
+    }
+
+    .hero-copy {
+      max-width: 690px;
+      margin-top: 18px;
+      color: var(--ink-soft);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .hero-status {
+      display: grid;
+      gap: 12px;
+      min-width: 280px;
+    }
+
+    .status-card {
+      padding: 16px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 252, 246, 0.74);
+      box-shadow: 0 16px 34px rgba(39, 35, 29, 0.08);
+      backdrop-filter: blur(14px);
+    }
+
+    .status-label,
+    .stat-label,
+    .control-label,
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .status-value {
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .stat-card {
+      position: relative;
+      overflow: hidden;
+      min-height: 124px;
+      padding: 18px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-lg);
+      background: var(--panel);
+      box-shadow: 0 18px 48px rgba(39, 35, 29, 0.08);
+    }
+
+    .stat-card::after {
+      position: absolute;
+      right: -40px;
+      top: -56px;
+      width: 130px;
+      height: 130px;
+      content: "";
+      border-radius: 50%;
+      background: rgba(15, 118, 110, 0.08);
+    }
+
+    .stat-value {
+      position: relative;
+      z-index: 1;
+      margin-top: 16px;
+      font-size: 32px;
+      font-weight: 850;
+      letter-spacing: -0.05em;
+    }
+
+    .stat-note {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(230px, 1.25fr) repeat(3, minmax(150px, 0.7fr)) auto auto;
+      gap: 12px;
+      align-items: end;
+      margin-top: 18px;
+      padding: 16px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-xl);
+      background: rgba(255, 252, 246, 0.9);
+      box-shadow: 0 18px 48px rgba(39, 35, 29, 0.08);
+    }
+
+    .control {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .control input,
+    .control select {
+      width: 100%;
+      min-height: 44px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      outline: none;
+      color: var(--ink);
+      background: #fffdf8;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    .control input:focus,
+    .control select:focus {
+      border-color: rgba(15, 118, 110, 0.55);
+      box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+    }
+
+    .toggle {
+      display: inline-flex;
+      gap: 9px;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink-soft);
+      background: #fffdf8;
+      font-weight: 800;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .toggle:hover,
+    .icon-button:hover,
+    .pair-card:hover {
+      transform: translateY(-1px);
+    }
+
+    .toggle[aria-pressed="true"] {
+      border-color: rgba(15, 118, 110, 0.24);
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.75fr) minmax(340px, 0.9fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+
+    .panel {
+      min-height: 0;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-xl);
+      background: var(--panel);
+      box-shadow: 0 20px 54px rgba(39, 35, 29, 0.09);
+    }
+
+    .list-panel,
+    .detail-panel {
+      display: flex;
+      flex-direction: column;
+      height: var(--panel-height);
+      overflow: hidden;
+    }
+
+    .list-panel {
+      min-height: 0;
+    }
+
+    .panel-head {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid rgba(23, 33, 38, 0.08);
+    }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .table-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      scrollbar-color: rgba(15, 118, 110, 0.45) transparent;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid rgba(23, 33, 38, 0.08);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      color: var(--muted);
+      background: rgba(255, 252, 246, 0.96);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+
+    th[data-sort] {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th[data-sort]::after {
+      display: inline-block;
+      width: 14px;
+      margin-left: 5px;
+      color: rgba(111, 121, 126, 0.5);
+      content: "↕";
+      font-size: 10px;
+    }
+
+    th.is-sorted::after {
+      color: var(--brand);
+      content: "↓";
+    }
+
+    th.is-sorted.sort-asc::after {
+      content: "↑";
+    }
+
+    tr {
+      transition: background 150ms ease;
+    }
+
+    tbody tr:hover td {
+      background: rgba(15, 118, 110, 0.055);
+      cursor: pointer;
+    }
+
+    tbody tr.is-selected td {
+      background: rgba(15, 118, 110, 0.11);
+    }
+
+    .symbol-cell {
+      min-width: 180px;
+    }
+
+    .symbol-main {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .combo-line {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-family: var(--mono);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 22px;
+      padding: 0 8px;
+      border: 1px solid rgba(15, 118, 110, 0.16);
+      border-radius: 999px;
+      color: var(--brand-strong);
+      background: var(--brand-soft);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .badge-warn {
+      border-color: rgba(183, 121, 31, 0.2);
+      color: #8b5a10;
+      background: var(--amber-soft);
+    }
+
+    .number {
+      font-family: var(--mono);
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .number.positive {
+      color: var(--green);
+    }
+
+    .number.negative {
+      color: var(--danger);
+    }
+
+    .number.muted {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .pair-value {
+      display: grid;
+      gap: 4px;
+      min-width: 120px;
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .pair-value span:first-child {
+      color: var(--ink);
+      font-weight: 850;
+    }
+
+    .updated-cell {
+      min-width: 132px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .fresh-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(18, 118, 93, 0.12);
+    }
+
+    .fresh-dot.stale {
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(183, 121, 31, 0.13);
+    }
+
+    .mobile-list {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .list-footer {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      padding: 14px 16px 16px;
+      border-top: 1px solid rgba(23, 33, 38, 0.08);
+      background: rgba(255, 252, 246, 0.78);
+    }
+
+    .page-summary {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .pagination-bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .page-size-control {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .page-size-control select {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: #fffdf8;
+    }
+
+    .pagination-pages {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .page-button,
+    .page-ellipsis {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 38px;
+      min-height: 38px;
+      padding: 0 12px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: 999px;
+      background: #fffdf8;
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .page-button {
+      cursor: pointer;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+    }
+
+    .page-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(15, 118, 110, 0.28);
+      color: var(--brand-strong);
+    }
+
+    .page-button.is-active {
+      border-color: rgba(15, 118, 110, 0.28);
+      background: var(--brand-soft);
+      color: var(--brand-strong);
+    }
+
+    .page-button:disabled {
+      opacity: 0.46;
+      cursor: not-allowed;
+    }
+
+    .pair-card {
+      display: grid;
+      gap: 14px;
+      width: 100%;
+      padding: 16px;
+      border: 1px solid rgba(23, 33, 38, 0.1);
+      border-radius: var(--radius-lg);
+      color: inherit;
+      background: #fffdf8;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 14px 32px rgba(39, 35, 29, 0.07);
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .pair-card.is-selected {
+      border-color: rgba(15, 118, 110, 0.42);
+      background: rgba(215, 239, 234, 0.52);
+    }
+
+    .pair-card-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .pair-card-symbol {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+
+    .pair-card-combo {
+      margin-top: 4px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .card-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini-metric {
+      padding: 10px;
+      border-radius: 14px;
+      background: rgba(244, 239, 232, 0.72);
+    }
+
+    .detail-panel {
+      position: sticky;
+      top: 18px;
+    }
+
+    .detail-body {
+      flex: 1;
+      min-height: 0;
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .detail-head {
+      display: grid;
+      gap: 9px;
+      padding: 20px;
+      color: #fffaf1;
+      background:
+        radial-gradient(circle at 92% 12%, rgba(247, 228, 191, 0.18), transparent 30%),
+        linear-gradient(135deg, #162328 0%, #0f4b48 100%);
+    }
+
+    .detail-symbol {
+      font-size: 30px;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }
+
+    .detail-combo {
+      color: rgba(255, 250, 241, 0.72);
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric-card {
+      padding: 13px;
+      border: 1px solid rgba(23, 33, 38, 0.08);
+      border-radius: var(--radius-md);
+      background: #fffdf8;
+    }
+
+    .metric-value {
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+
+    .detail-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(23, 33, 38, 0.09);
+    }
+
+    .section-title {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .chart-wrap {
+      overflow: hidden;
+      border: 1px solid rgba(23, 33, 38, 0.08);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, #fffdf8, #f8f1e7);
+    }
+
+    .chart-wrap svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .chart-grid {
+      stroke: rgba(23, 33, 38, 0.09);
+      stroke-width: 1;
+    }
+
+    .chart-axis-label {
+      fill: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .chart-line-open {
+      fill: none;
+      stroke: var(--brand);
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 3;
+    }
+
+    .chart-line-close {
+      fill: none;
+      stroke: var(--amber);
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 3;
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 11px 13px 13px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .legend span {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .legend i {
+      display: inline-block;
+      width: 20px;
+      height: 3px;
+      border-radius: 999px;
+    }
+
+    .legend .open-line {
+      background: var(--brand);
+    }
+
+    .legend .close-line {
+      background: var(--amber);
+    }
+
+    .history-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .history-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(23, 33, 38, 0.13);
+      font-size: 13px;
+    }
+
+    .history-row:last-child {
+      border-bottom: 0;
+    }
+
+    .empty-state,
+    .empty-chart {
+      padding: 28px 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .empty-state h3 {
+      margin-bottom: 8px;
+      color: var(--ink);
+      font-size: 18px;
+    }
+
+    .loading {
+      padding: 34px 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1180px) {
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 980px) {
+      .app-shell {
+        padding: 18px 14px 40px;
+      }
+
+      .hero,
+      .content-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        padding: 24px;
+      }
+
+      .hero-status {
+        min-width: 0;
+      }
+
+      .toolbar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .list-panel,
+      .detail-panel {
+        height: auto;
+        position: static;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .summary-grid,
+      .toolbar,
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .table-wrap {
+        display: none;
+      }
+
+      .mobile-list {
+        display: grid;
+        overflow: visible;
+      }
+
+      .panel-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .card-metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .list-footer,
+      .pagination-bar,
+      .pagination-pages {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-content">
+        <div class="eyebrow">Live Arbitrage Console</div>
+        <h1 id="page-title">Perp Data Monitor</h1>
+        <p class="hero-copy">
+          自动发现交易所市场、对齐同一标的，并把开平价差、资金费率、指数差与流动性集中到一个响应式监控台。
+        </p>
+      </div>
+      <div class="hero-status">
+        <div class="status-card">
+          <div class="status-label">监控交易所</div>
+          <div class="status-value" id="monitor-meta">加载中</div>
+        </div>
+        <div class="status-card">
+          <div class="status-label">刷新状态</div>
+          <div class="status-value" id="refresh-meta">等待首次数据</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="summary-grid" id="summary-grid" aria-label="监控概览"></section>
+
+    <section class="toolbar" aria-label="排序和筛选">
+      <label class="control">
+        <span class="control-label">搜索</span>
+        <input id="search-input" type="search" placeholder="BTC、binance、spot..." autocomplete="off">
+      </label>
+      <label class="control">
+        <span class="control-label">交易所</span>
+        <select id="exchange-filter">
+          <option value="all">全部交易所</option>
+        </select>
+      </label>
+      <label class="control">
+        <span class="control-label">组合类型</span>
+        <select id="kind-filter">
+          <option value="all">全部组合</option>
+          <option value="spot_perp">Spot / Perp</option>
+          <option value="perp_perp">Perp / Perp</option>
+        </select>
+      </label>
+      <label class="control">
+        <span class="control-label">排序</span>
+        <select id="sort-select">
+          <option value="open_spread_abs">开仓价差绝对值</option>
+          <option value="close_spread_abs">平仓价差绝对值</option>
+          <option value="funding_diff_abs">费率差绝对值</option>
+          <option value="index_diff_abs">指数价差绝对值</option>
+          <option value="volume_24h">24h 成交额</option>
+          <option value="updated_at">更新时间</option>
+          <option value="symbol">标的名称</option>
+        </select>
+      </label>
+      <button class="toggle" id="sort-direction-toggle" type="button" aria-pressed="false">降序</button>
+      <button class="toggle" id="funding-toggle" type="button" aria-pressed="false">有费率差</button>
+      <button class="toggle" id="fresh-toggle" type="button" aria-pressed="false">最近更新</button>
+    </section>
+
+    <section class="content-grid">
+      <section class="panel list-panel" aria-labelledby="list-title">
+        <header class="panel-head">
+          <div>
+            <h2 class="panel-title" id="list-title">监控组合</h2>
+            <p class="panel-subtitle" id="list-subtitle">正在加载监控数据</p>
+          </div>
+          <span class="badge badge-warn" id="sort-badge">按开仓价差排序</span>
+        </header>
+        <div class="table-wrap">
+          <table id="pairs-table">
+            <thead>
+              <tr>
+                <th data-sort="symbol">标的</th>
+                <th data-sort="open_spread_abs">开仓价差 (%)</th>
+                <th data-sort="close_spread_abs">平仓价差 (%)</th>
+                <th>当前费率 (%)</th>
+                <th data-sort="funding_diff_abs">费率差 (%)</th>
+                <th>指数价格</th>
+                <th data-sort="index_diff_abs">指数价差 (%)</th>
+                <th data-sort="volume_24h">24h 成交额</th>
+                <th data-sort="updated_at">更新时间</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="mobile-list" id="mobile-list"></div>
+        <footer class="list-footer">
+          <div class="page-summary" id="page-summary">第 1 / 1 页，共 0 条组合</div>
+          <div class="pagination-bar">
+            <label class="page-size-control" for="page-size-select">
+              <span>每页</span>
+              <select id="page-size-select">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <div class="pagination-pages" id="pagination-pages"></div>
+          </div>
+        </footer>
+      </section>
+
+      <aside class="panel detail-panel" id="detail-panel" aria-live="polite">
+        <div class="detail-head">
+          <div class="badge">等待选择</div>
+          <div class="detail-symbol">选择一条监控组合</div>
+          <div class="detail-combo">点击左侧表格或移动端卡片查看价差折线图与资金费率历史。</div>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const FRESH_WINDOW_MS = 60 * 1000;
+
+    const elements = {
+      tbody: document.querySelector("#pairs-table tbody"),
+      mobileList: document.querySelector("#mobile-list"),
+      pageSummary: document.querySelector("#page-summary"),
+      pageSizeSelect: document.querySelector("#page-size-select"),
+      paginationPages: document.querySelector("#pagination-pages"),
+      detailPanel: document.querySelector("#detail-panel"),
+      monitorMeta: document.querySelector("#monitor-meta"),
+      refreshMeta: document.querySelector("#refresh-meta"),
+      summaryGrid: document.querySelector("#summary-grid"),
+      listSubtitle: document.querySelector("#list-subtitle"),
+      sortBadge: document.querySelector("#sort-badge"),
+      searchInput: document.querySelector("#search-input"),
+      exchangeFilter: document.querySelector("#exchange-filter"),
+      kindFilter: document.querySelector("#kind-filter"),
+      sortSelect: document.querySelector("#sort-select"),
+      sortDirectionToggle: document.querySelector("#sort-direction-toggle"),
+      fundingToggle: document.querySelector("#funding-toggle"),
+      freshToggle: document.querySelector("#fresh-toggle"),
+      sortHeaders: document.querySelectorAll("th[data-sort]"),
+    };
+
+    const state = {
+      pairs: [],
+      health: null,
+      selectedPairId: null,
+      detailPairId: null,
+      detailRequestId: 0,
+      detailLoadedAt: 0,
+      sortKey: "open_spread_abs",
+      sortDir: "desc",
+      currentPage: 1,
+      pageSize: 20,
+      searchTerm: "",
+      exchange: "all",
+      pairKind: "all",
+      onlyFundingDiff: false,
+      onlyFresh: false,
+      lastPairsAt: null,
+      lastError: null,
+    };
+
+    const sortLabels = {
+      open_spread_abs: "开仓价差",
+      close_spread_abs: "平仓价差",
+      funding_diff_abs: "费率差",
+      index_diff_abs: "指数价差",
+      volume_24h: "24h 成交额",
+      updated_at: "更新时间",
+      symbol: "标的名称",
+    };
+
+    const sorters = {
+      open_spread_abs: item => Math.abs(metricValue(item.metrics.open_spread_bps)),
+      close_spread_abs: item => Math.abs(metricValue(item.metrics.close_spread_bps)),
+      funding_diff_abs: item => Math.abs(metricValue(item.metrics.funding_diff_bps)),
+      index_diff_abs: item => Math.abs(metricValue(item.metrics.index_diff_bps)),
+      volume_24h: item => metricValue(item.metrics.left_volume_24h, 0) + metricValue(item.metrics.right_volume_24h, 0),
+      updated_at: item => Number(item.metrics.updated_at_ms || 0),
+      symbol: item => item.pair.canonical_symbol,
+    };
+
+    function metricValue(value, fallback = Number.NEGATIVE_INFINITY) {
+      return value == null || Number.isNaN(Number(value)) ? fallback : Number(value);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatNumber(value, digits = 2) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      return Number(value).toFixed(digits);
+    }
+
+    function percentDigits(percentValue) {
+      const abs = Math.abs(percentValue);
+      if (abs >= 1) {
+        return 2;
+      }
+      if (abs >= 0.1) {
+        return 3;
+      }
+      return 4;
+    }
+
+    function formatPercentFromBps(value, { signed = false, fallback = "-" } = {}) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return fallback;
+      }
+      const percentValue = Number(value) / 100;
+      const digits = percentDigits(percentValue);
+      const prefix = signed && percentValue > 0 ? "+" : "";
+      return `${prefix}${percentValue.toFixed(digits)}%`;
+    }
+
+    function formatSignedPercentFromBps(value) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return '<span class="number muted">-</span>';
+      }
+      const percentValue = Number(value) / 100;
+      const cls = percentValue > 0 ? "positive" : percentValue < 0 ? "negative" : "";
+      return `<span class="number ${cls}">${formatPercentFromBps(value, { signed: true })}</span>`;
+    }
+
+    function formatPrice(value) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      const num = Number(value);
+      const abs = Math.abs(num);
+      if (abs >= 1000) {
+        return num.toFixed(2);
+      }
+      if (abs >= 1) {
+        return num.toFixed(4);
+      }
+      if (abs >= 0.01) {
+        return num.toFixed(6);
+      }
+      return num.toFixed(8);
+    }
+
+    function formatRate(value) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      return `${(Number(value) * 100).toFixed(4)}%`;
+    }
+
+    function formatVolume(value) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      return Number(value).toLocaleString(undefined, {
+        notation: Number(value) >= 1_000_000 ? "compact" : "standard",
+        maximumFractionDigits: 2,
+      });
+    }
+
+    function formatTime(ts) {
+      return ts ? new Date(ts).toLocaleString() : "-";
+    }
+
+    function formatShortTime(ts) {
+      return ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "-";
+    }
+
+    function comboLabel(item) {
+      return `${item.pair.left.exchange}/${item.pair.left.instrument.market_kind} → ${item.pair.right.exchange}/${item.pair.right.instrument.market_kind}`;
+    }
+
+    function pairKindLabel(kind) {
+      return kind === "spot_perp" ? "Spot / Perp" : "Perp / Perp";
+    }
+
+    function isFresh(item) {
+      const updatedAt = Number(item.metrics.updated_at_ms || 0);
+      return updatedAt > 0 && Date.now() - updatedAt <= FRESH_WINDOW_MS;
+    }
+
+    function pairValue(left, right, formatter) {
+      return `
+        <span>${formatter(left)}</span>
+        <span>${formatter(right)}</span>
+      `;
+    }
+
+    function matchesFilters(item) {
+      const haystack = [
+        item.pair.canonical_symbol,
+        item.pair.left.exchange,
+        item.pair.right.exchange,
+        item.pair.left.instrument.market_kind,
+        item.pair.right.instrument.market_kind,
+        item.pair.kind,
+      ].join(" ").toLowerCase();
+
+      if (state.searchTerm && !haystack.includes(state.searchTerm)) {
+        return false;
+      }
+
+      if (state.exchange !== "all" && item.pair.left.exchange !== state.exchange && item.pair.right.exchange !== state.exchange) {
+        return false;
+      }
+
+      if (state.pairKind !== "all" && item.pair.kind !== state.pairKind) {
+        return false;
+      }
+
+      if (state.onlyFundingDiff && item.metrics.funding_diff_bps == null) {
+        return false;
+      }
+
+      if (state.onlyFresh && !isFresh(item)) {
+        return false;
+      }
+
+      return true;
+    }
+
+    function filteredAndSortedPairs() {
+      const items = state.pairs.filter(matchesFilters);
+      const accessor = sorters[state.sortKey] || sorters.open_spread_abs;
+
+      return [...items].sort((left, right) => {
+        const leftValue = accessor(left);
+        const rightValue = accessor(right);
+        let result;
+
+        if (typeof leftValue === "string" || typeof rightValue === "string") {
+          result = String(leftValue).localeCompare(String(rightValue));
+        } else {
+          result = leftValue - rightValue;
+        }
+
+        return state.sortDir === "asc" ? result : -result;
+      });
+    }
+
+    function paginateItems(items) {
+      const totalItems = items.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / state.pageSize));
+      state.currentPage = Math.min(Math.max(1, state.currentPage), totalPages);
+      const startIndex = totalItems === 0 ? 0 : (state.currentPage - 1) * state.pageSize;
+      const endIndex = Math.min(startIndex + state.pageSize, totalItems);
+      return {
+        totalItems,
+        totalPages,
+        currentPage: state.currentPage,
+        startIndex,
+        endIndex,
+        pageItems: items.slice(startIndex, endIndex),
+      };
+    }
+
+    function bestAbs(items, key) {
+      return items.reduce((best, item) => {
+        const value = item.metrics[key];
+        if (value == null) {
+          return best;
+        }
+        return Math.abs(value) > Math.abs(best ?? 0) ? value : best;
+      }, null);
+    }
+
+    function totalVolume(items) {
+      return items.reduce((sum, item) => {
+        return sum + metricValue(item.metrics.left_volume_24h, 0) + metricValue(item.metrics.right_volume_24h, 0);
+      }, 0);
+    }
+
+    function renderSummary(items) {
+      const freshCount = state.pairs.filter(isFresh).length;
+      const fundingCount = state.pairs.filter(item => item.metrics.funding_diff_bps != null).length;
+      const bestOpen = bestAbs(state.pairs, "open_spread_bps");
+      const cards = [
+        ["组合总数", state.pairs.length, `${items.length} 条匹配当前筛选`],
+        ["最大开仓价差", bestOpen == null ? "-" : formatPercentFromBps(Math.abs(bestOpen)), "按绝对值统计全量列表"],
+        ["费率差可用", fundingCount, "有双腿资金费率差的数据"],
+        ["最近更新", freshCount, `60 秒内更新，成交额 ${formatVolume(totalVolume(items))}`],
+      ];
+
+      elements.summaryGrid.innerHTML = cards.map(([label, value, note]) => `
+        <article class="stat-card">
+          <div class="stat-label">${label}</div>
+          <div class="stat-value">${value}</div>
+          <div class="stat-note">${note}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderExchangeOptions() {
+      const exchanges = [...new Set(state.pairs.flatMap(item => [item.pair.left.exchange, item.pair.right.exchange]))].sort();
+      const current = state.exchange;
+      elements.exchangeFilter.innerHTML = '<option value="all">全部交易所</option>' + exchanges.map(exchange => {
+        return `<option value="${escapeHtml(exchange)}">${escapeHtml(exchange)}</option>`;
+      }).join("");
+      elements.exchangeFilter.value = exchanges.includes(current) ? current : "all";
+      state.exchange = elements.exchangeFilter.value;
+    }
+
+    function renderPagination(view) {
+      const { currentPage, totalPages, totalItems, startIndex, endIndex } = view;
+      if (totalItems === 0) {
+        elements.pageSummary.textContent = `第 1 / 1 页，共 0 条组合`;
+      } else {
+        elements.pageSummary.textContent = `第 ${currentPage} / ${totalPages} 页，显示 ${startIndex + 1}-${endIndex}，共 ${totalItems} 条组合`;
+      }
+      elements.pageSizeSelect.value = String(state.pageSize);
+
+      const tokens = [];
+      const pushPage = page => tokens.push({ type: "page", page });
+      const pushEllipsis = () => tokens.push({ type: "ellipsis" });
+
+      if (totalPages <= 7) {
+        for (let page = 1; page <= totalPages; page += 1) {
+          pushPage(page);
+        }
+      } else {
+        pushPage(1);
+        if (currentPage > 4) {
+          pushEllipsis();
+        }
+
+        for (let page = Math.max(2, currentPage - 2); page <= Math.min(totalPages - 1, currentPage + 2); page += 1) {
+          pushPage(page);
+        }
+
+        if (currentPage < totalPages - 3) {
+          pushEllipsis();
+        }
+
+        pushPage(totalPages);
+      }
+
+      const uniqueTokens = [];
+      let lastPage = null;
+      for (const token of tokens) {
+        if (token.type === "page") {
+          if (token.page !== lastPage) {
+            uniqueTokens.push(token);
+            lastPage = token.page;
+          }
+        } else if (uniqueTokens[uniqueTokens.length - 1]?.type !== "ellipsis") {
+          uniqueTokens.push(token);
+        }
+      }
+
+      const navButtons = [
+        { label: "首页", page: 1, disabled: currentPage === 1 },
+        { label: "上一页", page: Math.max(1, currentPage - 1), disabled: currentPage === 1 },
+      ];
+
+      const tailButtons = [
+        { label: "下一页", page: Math.min(totalPages, currentPage + 1), disabled: currentPage === totalPages },
+        { label: "末页", page: totalPages, disabled: currentPage === totalPages },
+      ];
+
+      elements.paginationPages.innerHTML = [
+        ...navButtons.map(button => `
+          <button class="page-button" type="button" data-page="${button.page}" ${button.disabled ? "disabled" : ""}>${button.label}</button>
+        `),
+        ...uniqueTokens.map(token => {
+          if (token.type === "ellipsis") {
+            return '<span class="page-ellipsis">...</span>';
+          }
+          return `
+            <button class="page-button ${token.page === currentPage ? "is-active" : ""}" type="button" data-page="${token.page}">
+              ${token.page}
+            </button>
+          `;
+        }),
+        ...tailButtons.map(button => `
+          <button class="page-button" type="button" data-page="${button.page}" ${button.disabled ? "disabled" : ""}>${button.label}</button>
+        `),
+      ].join("");
+    }
+
+    function renderTable(items) {
+      if (!items.length) {
+        elements.tbody.innerHTML = `
+          <tr>
+            <td colspan="9">
+              <div class="empty-state">
+                <h3>没有匹配的监控组合</h3>
+                <p>试试放宽筛选条件、切换交易所，或清空关键字。</p>
+              </div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      elements.tbody.innerHTML = items.map(item => {
+        const selected = item.pair.pair_id === state.selectedPairId ? "is-selected" : "";
+        const freshClass = isFresh(item) ? "" : "stale";
+        return `
+          <tr class="${selected}" data-pair-id="${escapeHtml(item.pair.pair_id)}">
+            <td class="symbol-cell">
+              <div class="symbol-main">
+                <span>${escapeHtml(item.pair.canonical_symbol)}</span>
+                <span class="badge">${pairKindLabel(item.pair.kind)}</span>
+              </div>
+              <div class="combo-line">${escapeHtml(comboLabel(item))}</div>
+            </td>
+            <td>${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</td>
+            <td>${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</td>
+            <td><div class="pair-value">${pairValue(item.metrics.left_funding_rate, item.metrics.right_funding_rate, formatRate)}</div></td>
+            <td>${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</td>
+            <td><div class="pair-value">${pairValue(item.metrics.left_index_price, item.metrics.right_index_price, formatPrice)}</div></td>
+            <td>${formatSignedPercentFromBps(item.metrics.index_diff_bps)}</td>
+            <td><div class="pair-value">${pairValue(item.metrics.left_volume_24h, item.metrics.right_volume_24h, formatVolume)}</div></td>
+            <td class="updated-cell"><span class="fresh-dot ${freshClass}"></span>${formatShortTime(item.metrics.updated_at_ms)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderMobileCards(items) {
+      if (!items.length) {
+        elements.mobileList.innerHTML = `
+          <div class="empty-state">
+            <h3>没有匹配的监控组合</h3>
+            <p>试试放宽筛选条件、切换交易所，或清空关键字。</p>
+          </div>
+        `;
+        return;
+      }
+
+      elements.mobileList.innerHTML = items.map(item => {
+        const selected = item.pair.pair_id === state.selectedPairId ? "is-selected" : "";
+        return `
+          <button class="pair-card ${selected}" type="button" data-pair-id="${escapeHtml(item.pair.pair_id)}">
+            <span class="sr-only">查看 ${escapeHtml(item.pair.canonical_symbol)} 详情</span>
+            <div class="pair-card-head">
+              <div>
+                <div class="pair-card-symbol">${escapeHtml(item.pair.canonical_symbol)}</div>
+                <div class="pair-card-combo">${escapeHtml(comboLabel(item))}</div>
+              </div>
+              <span class="badge">${pairKindLabel(item.pair.kind)}</span>
+            </div>
+            <div class="card-metrics">
+              <div class="mini-metric">
+                <div class="metric-label">开仓</div>
+                <div class="metric-value">${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</div>
+              </div>
+              <div class="mini-metric">
+                <div class="metric-label">平仓</div>
+                <div class="metric-value">${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</div>
+              </div>
+              <div class="mini-metric">
+                <div class="metric-label">费率差</div>
+                <div class="metric-value">${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</div>
+              </div>
+              <div class="mini-metric">
+                <div class="metric-label">更新</div>
+                <div class="metric-value">${formatShortTime(item.metrics.updated_at_ms)}</div>
+              </div>
+            </div>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function renderSortState() {
+      elements.sortSelect.value = state.sortKey;
+      elements.sortBadge.textContent = `${sortLabels[state.sortKey] || "开仓价差"} ${state.sortDir === "asc" ? "升序" : "降序"}`;
+      elements.sortDirectionToggle.textContent = state.sortDir === "asc" ? "升序" : "降序";
+      elements.sortDirectionToggle.setAttribute("aria-pressed", String(state.sortDir === "asc"));
+      elements.sortHeaders.forEach(header => {
+        header.classList.toggle("is-sorted", header.dataset.sort === state.sortKey);
+        header.classList.toggle("sort-asc", header.dataset.sort === state.sortKey && state.sortDir === "asc");
+      });
+    }
+
+    function ensureSelection(items) {
+      const selectedStillVisible = items.some(item => item.pair.pair_id === state.selectedPairId);
+      if (!selectedStillVisible) {
+        state.selectedPairId = items[0]?.pair.pair_id || null;
+      }
+    }
+
+    function renderDetailIdle(title, description) {
+      elements.detailPanel.innerHTML = `
+        <div class="detail-head">
+          <div class="badge badge-warn">等待选择</div>
+          <div class="detail-symbol">${escapeHtml(title)}</div>
+          <div class="detail-combo">${escapeHtml(description)}</div>
+        </div>
+      `;
+    }
+
+    function renderDetailLoading() {
+      elements.detailPanel.innerHTML = `
+        <div class="detail-head">
+          <div class="badge">正在加载</div>
+          <div class="detail-symbol">同步组合详情</div>
+          <div class="detail-combo">正在拉取折线图和结算历史，请稍候。</div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const filteredItems = filteredAndSortedPairs();
+      const view = paginateItems(filteredItems);
+      ensureSelection(view.pageItems);
+      renderSummary(filteredItems);
+      renderTable(view.pageItems);
+      renderMobileCards(view.pageItems);
+      renderPagination(view);
+      renderSortState();
+      elements.fundingToggle.setAttribute("aria-pressed", String(state.onlyFundingDiff));
+      elements.freshToggle.setAttribute("aria-pressed", String(state.onlyFresh));
+      elements.listSubtitle.textContent = `${view.totalItems} / ${state.pairs.length} 条组合，当前第 ${view.currentPage}/${view.totalPages} 页`;
+      if (!state.selectedPairId) {
+        state.detailPairId = null;
+        renderDetailIdle("当前没有可展示的组合", "调整筛选条件后，再从列表中选择一条组合查看折线图和结算记录。");
+        return;
+      }
+
+      if (state.detailPairId !== state.selectedPairId) {
+        renderDetailLoading();
+      }
+
+      if (state.detailPairId !== state.selectedPairId || state.detailLoadedAt < state.lastPairsAt) {
+        loadPairDetail(state.selectedPairId);
+      }
+    }
+
+    function renderSpreadChart(points) {
+      const clean = points
+        .filter(point => Number.isFinite(Number(point.open_spread_bps)) && Number.isFinite(Number(point.close_spread_bps)))
+        .slice(-120);
+
+      if (clean.length < 2) {
+        return '<div class="empty-chart">暂无足够的价差历史用于绘制折线图</div>';
+      }
+
+      const width = 640;
+      const height = 220;
+      const padX = 44;
+      const padY = 26;
+      const values = clean.flatMap(point => [Number(point.open_spread_bps), Number(point.close_spread_bps)]);
+      let min = Math.min(...values);
+      let max = Math.max(...values);
+      if (min === max) {
+        min -= 1;
+        max += 1;
+      }
+      const spread = max - min;
+      min -= spread * 0.12;
+      max += spread * 0.12;
+
+      const xFor = index => padX + (index / (clean.length - 1)) * (width - padX * 2);
+      const yFor = value => height - padY - ((value - min) / (max - min)) * (height - padY * 2);
+      const pathFor = key => clean.map((point, index) => {
+        const command = index === 0 ? "M" : "L";
+        return `${command} ${xFor(index).toFixed(2)} ${yFor(Number(point[key])).toFixed(2)}`;
+      }).join(" ");
+
+      const grid = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
+        const y = padY + ratio * (height - padY * 2);
+        const value = max - ratio * (max - min);
+        return `
+          <line class="chart-grid" x1="${padX}" y1="${y.toFixed(2)}" x2="${width - padX}" y2="${y.toFixed(2)}"></line>
+          <text class="chart-axis-label" x="8" y="${(y + 4).toFixed(2)}">${formatPercentFromBps(value)}</text>
+        `;
+      }).join("");
+
+      return `
+        <div class="chart-wrap">
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="开仓和平仓价差历史折线图">
+            ${grid}
+            <path class="chart-line-open" d="${pathFor("open_spread_bps")}"></path>
+            <path class="chart-line-close" d="${pathFor("close_spread_bps")}"></path>
+            <text class="chart-axis-label" x="${padX}" y="${height - 7}">${formatShortTime(clean[0].ts_ms)}</text>
+            <text class="chart-axis-label" x="${width - padX - 70}" y="${height - 7}">${formatShortTime(clean[clean.length - 1].ts_ms)}</text>
+          </svg>
+          <div class="legend">
+            <span><i class="open-line"></i>开仓价差</span>
+            <span><i class="close-line"></i>平仓价差</span>
+            <span>范围 ${formatPercentFromBps(min)} 到 ${formatPercentFromBps(max)}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderFundingHistory(title, records) {
+      return `
+        <div class="detail-section">
+          <div class="section-title">${title}<span class="badge">${records.length}</span></div>
+          <div class="history-list">
+            ${records.slice(-6).reverse().map(record => `
+              <div class="history-row">
+                <span>${formatTime(record.settled_at_ms)}</span>
+                <span class="number">${formatRate(record.rate)}</span>
+              </div>
+            `).join("") || '<div class="empty-chart">暂无结算记录</div>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDetail(payload) {
+      if (!payload.item) {
+        elements.detailPanel.innerHTML = `
+          <div class="detail-head">
+            <div class="badge badge-warn">未找到</div>
+            <div class="detail-symbol">监控组合不存在</div>
+            <div class="detail-combo">当前选中的组合可能已被筛选或刷新移除。</div>
+          </div>
+        `;
+        return;
+      }
+
+      const item = payload.item;
+      elements.detailPanel.innerHTML = `
+        <div class="detail-head">
+          <div class="badge">${pairKindLabel(item.pair.kind)}</div>
+          <div class="detail-symbol">${escapeHtml(item.pair.canonical_symbol)}</div>
+          <div class="detail-combo">${escapeHtml(comboLabel(item))}<br>最后更新 ${formatTime(item.metrics.updated_at_ms)}</div>
+        </div>
+        <div class="detail-body">
+          <section class="metric-grid" aria-label="当前指标">
+            <div class="metric-card">
+              <div class="metric-label">开仓价差 (%)</div>
+              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">平仓价差 (%)</div>
+              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">费率差 (%)</div>
+              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">指数价差 (%)</div>
+              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.index_diff_bps)}</div>
+            </div>
+          </section>
+
+          <section class="detail-section">
+            <div class="section-title">最近 30 分钟价差折线图<span class="badge">${payload.spread_history.length} 点</span></div>
+            ${renderSpreadChart(payload.spread_history)}
+          </section>
+
+          <section class="detail-section">
+            <div class="section-title">腿部指标</div>
+            <div class="history-list">
+              <div class="history-row">
+                <span>当前资金费率</span>
+                <span class="number">${formatRate(item.metrics.left_funding_rate)} / ${formatRate(item.metrics.right_funding_rate)}</span>
+              </div>
+              <div class="history-row">
+                <span>指数价格</span>
+                <span class="number">${formatPrice(item.metrics.left_index_price)} / ${formatPrice(item.metrics.right_index_price)}</span>
+              </div>
+              <div class="history-row">
+                <span>24h 成交额</span>
+                <span class="number">${formatVolume(item.metrics.left_volume_24h)} / ${formatVolume(item.metrics.right_volume_24h)}</span>
+              </div>
+            </div>
+          </section>
+
+          ${renderFundingHistory("左腿费率结算", payload.left_funding_history)}
+          ${renderFundingHistory("右腿费率结算", payload.right_funding_history)}
+        </div>
+      `;
+    }
+
+    async function loadPairs() {
+      try {
+        const response = await fetch("/api/pairs");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        state.pairs = payload.items || [];
+        state.lastPairsAt = Date.now();
+        state.lastError = null;
+        renderExchangeOptions();
+        render();
+        elements.refreshMeta.textContent = `列表 ${formatShortTime(state.lastPairsAt)} 刷新`;
+      } catch (error) {
+        state.lastError = error;
+        elements.refreshMeta.textContent = `列表刷新失败: ${error.message}`;
+      }
+    }
+
+    async function loadHealth() {
+      try {
+        const response = await fetch("/api/health");
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        state.health = payload;
+        const exchanges = payload.enabled_exchanges && payload.enabled_exchanges.length > 0
+          ? payload.enabled_exchanges.join(", ")
+          : "全部交易所";
+        elements.monitorMeta.textContent = `${exchanges} · ${payload.pair_count} 个组合`;
+      } catch (error) {
+        elements.monitorMeta.textContent = `健康状态加载失败: ${error.message}`;
+      }
+    }
+
+    async function loadPairDetail(pairId) {
+      if (!pairId) {
+        return;
+      }
+      try {
+        const requestId = ++state.detailRequestId;
+        const response = await fetch(`/api/pairs/${encodeURIComponent(pairId)}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        if (requestId !== state.detailRequestId) {
+          return;
+        }
+        state.detailPairId = pairId;
+        state.detailLoadedAt = Date.now();
+        renderDetail(payload);
+      } catch (error) {
+        elements.detailPanel.innerHTML = `
+          <div class="detail-head">
+            <div class="badge badge-warn">加载失败</div>
+            <div class="detail-symbol">详情刷新失败</div>
+            <div class="detail-combo">${escapeHtml(error.message)}</div>
+          </div>
+        `;
+      }
+    }
+
+    function handlePairSelection(event) {
+      const row = event.target.closest("[data-pair-id]");
+      if (!row) {
+        return;
+      }
+      state.selectedPairId = row.dataset.pairId;
+      render();
+    }
+
+    function setSort(sortKey) {
+      if (state.sortKey === sortKey) {
+        state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+      } else {
+        state.sortKey = sortKey;
+        state.sortDir = sortKey === "symbol" ? "asc" : "desc";
+      }
+      state.currentPage = 1;
+      render();
+    }
+
+    elements.searchInput.addEventListener("input", event => {
+      state.searchTerm = event.target.value.trim().toLowerCase();
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.exchangeFilter.addEventListener("change", event => {
+      state.exchange = event.target.value;
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.kindFilter.addEventListener("change", event => {
+      state.pairKind = event.target.value;
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.sortSelect.addEventListener("change", event => {
+      state.sortKey = event.target.value;
+      state.sortDir = state.sortKey === "symbol" ? "asc" : "desc";
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.sortDirectionToggle.addEventListener("click", () => {
+      state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+      render();
+    });
+
+    elements.fundingToggle.addEventListener("click", () => {
+      state.onlyFundingDiff = !state.onlyFundingDiff;
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.freshToggle.addEventListener("click", () => {
+      state.onlyFresh = !state.onlyFresh;
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.pageSizeSelect.addEventListener("change", event => {
+      state.pageSize = Number(event.target.value) || 20;
+      state.currentPage = 1;
+      render();
+    });
+
+    elements.paginationPages.addEventListener("click", event => {
+      const button = event.target.closest("[data-page]");
+      if (!button || button.disabled) {
+        return;
+      }
+      const page = Number(button.dataset.page);
+      if (!Number.isFinite(page) || page < 1) {
+        return;
+      }
+      state.currentPage = page;
+      render();
+    });
+
+    elements.sortHeaders.forEach(header => {
+      header.addEventListener("click", () => setSort(header.dataset.sort));
+    });
+
+    elements.tbody.addEventListener("click", handlePairSelection);
+    elements.mobileList.addEventListener("click", handlePairSelection);
+
+    loadHealth();
+    loadPairs();
+    setInterval(loadHealth, 15000);
+    setInterval(loadPairs, 5000);
+  </script>
+</body>
+</html>

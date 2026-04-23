@@ -12,6 +12,8 @@ The implementation keeps the existing Axum routes and JSON payloads unchanged. A
 - Make the layout fully responsive across desktop, tablet, and mobile.
 - Add practical sorting controls for spread, funding, index difference, update recency, symbol, and liquidity.
 - Add practical filtering controls for keyword search, exchange inclusion, pair kind, funding-difference availability, and recent updates.
+- Add traditional pagination controls so large result sets remain easy to browse.
+- Display spread- and basis-like values as percentages instead of `bps`.
 - Replace the plain spread-history list with a compact line chart for open and close spread history.
 
 ## Non-Goals
@@ -20,6 +22,7 @@ The implementation keeps the existing Axum routes and JSON payloads unchanged. A
 - No persistence of UI filter or sort preferences across reloads.
 - No third-party charting or UI libraries.
 - No websocket migration for the frontend polling model.
+- No backend pagination API changes in this iteration.
 
 ## Current Problems
 
@@ -42,6 +45,8 @@ Desktop uses a two-column content layout:
 
 - Left: summary cards, filters, and sortable data table
 - Right: sticky detail panel for the selected pair
+
+On desktop, the left list panel and right detail panel should share the same overall height so the dashboard feels visually balanced. Each panel can scroll internally.
 
 Mobile collapses into a single column:
 
@@ -74,6 +79,7 @@ The list remains table-based for fast comparison, but the presentation changes s
 - Stronger first column with symbol and pair-type badge
 - Directional visual emphasis for the most important metrics
 - Active row state for the selected pair
+- Traditional pagination footer with first, previous, numbered pages, next, last, and page-size selection
 - Improved empty-state messaging
 
 ### Mobile
@@ -91,6 +97,8 @@ Each card shows:
 - Update time
 
 Selecting a card updates the shared detail panel.
+
+The same pagination model is used on mobile so card lists do not become unwieldy.
 
 ## Sorting
 
@@ -115,6 +123,8 @@ Default sort remains opportunity-oriented:
 
 - sort by open spread absolute value descending
 
+Sorting and filtering are applied before pagination. When sort or filter state changes, pagination resets to the first page.
+
 ## Filtering
 
 The frontend supports these filters:
@@ -126,6 +136,37 @@ The frontend supports these filters:
 - Toggle for pairs updated recently
 
 The recent-update filter uses a browser-side freshness threshold and is meant to help isolate stale data issues quickly.
+
+## Pagination
+
+The frontend uses browser-side pagination because the current payload already contains all fields needed for sorting and filtering, and the current scale does not justify a backend pagination API.
+
+The list footer supports:
+
+- first page
+- previous page
+- visible page numbers
+- next page
+- last page
+- page-size selection
+
+Page changes update the currently selected pair so the right-side detail panel stays aligned with the current page contents.
+
+## Units
+
+All spread-style values that were previously displayed as `bps` are displayed as percentages instead. This includes:
+
+- open spread
+- close spread
+- funding difference
+- index difference
+- spread-chart axis labels and legends
+
+The backend data format remains unchanged. Conversion happens only in the browser:
+
+- `100 bps = 1%`
+
+Funding rates were already displayed as percentages and remain so.
 
 ## Detail Panel
 
@@ -159,6 +200,8 @@ Client-side state tracks:
 - latest list payload
 - current filters
 - current sort
+- current page
+- current page size
 - selected pair
 - health snapshot
 
@@ -170,6 +213,7 @@ Rendering is split into dedicated functions for summary cards, filters, desktop 
 - Empty data states should render user-facing placeholders.
 - Missing metric values should render as `-` with no layout breakage.
 - Stale data should be visually distinguishable through update-time treatment and the freshness filter.
+- Pagination state should clamp safely if filtering or refresh reduces the total number of pages.
 
 ## Files
 
@@ -191,6 +235,9 @@ The redesign is complete when:
 - the page is visually improved and coherent
 - the layout works on desktop and mobile widths
 - users can sort and filter the pair list interactively
+- users can page through the pair list with traditional pagination controls
 - the selected pair detail is easier to scan
+- spread-style values are displayed as percentages rather than `bps`
+- the desktop list and detail panels feel visually balanced in height
 - spread history is displayed as a line chart
 - no backend API changes are required
