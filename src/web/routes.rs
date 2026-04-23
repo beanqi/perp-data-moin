@@ -39,6 +39,7 @@ async fn health(State(state): State<WebState>) -> Json<HealthResponse> {
                 updated_at_ms: status.updated_at_ms,
             })
             .collect(),
+        enabled_exchanges: state.enabled_exchanges().to_vec(),
         pair_count: app_view.pair_views().len(),
     })
 }
@@ -140,6 +141,11 @@ const INDEX_HTML: &str = r##"<!doctype html>
       background: var(--accent-soft);
       color: var(--accent);
       font-size: 12px;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
       margin-bottom: 18px;
     }
     .detail {
@@ -187,7 +193,10 @@ const INDEX_HTML: &str = r##"<!doctype html>
 </head>
 <body>
   <main>
-    <div class="meta">自动发现 + 自动对齐 + 内存历史窗口</div>
+    <div class="meta-row">
+      <div class="meta">自动发现 + 自动对齐 + 内存历史窗口</div>
+      <div class="meta" id="monitor-meta">当前监控交易所加载中</div>
+    </div>
     <h1>Perp Data Monitor</h1>
     <p>当前是第一版骨架页面，列表展示监控组合，右侧展示单条组合的最近明细。</p>
     <div class="grid">
@@ -219,6 +228,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
   <script>
     const tbody = document.querySelector("#pairs-table tbody");
     const detailPanel = document.querySelector("#detail-panel");
+    const monitorMeta = document.querySelector("#monitor-meta");
     let selectedPairId = null;
 
     function formatNumber(value) {
@@ -296,6 +306,15 @@ const INDEX_HTML: &str = r##"<!doctype html>
       }
     }
 
+    async function loadHealth() {
+      const response = await fetch("/api/health");
+      const payload = await response.json();
+      const exchanges = payload.enabled_exchanges && payload.enabled_exchanges.length > 0
+        ? payload.enabled_exchanges.join(", ")
+        : "全部";
+      monitorMeta.textContent = `当前监控交易所: ${exchanges}`;
+    }
+
     async function loadPairDetail(pairId) {
       const response = await fetch(`/api/pairs/${encodeURIComponent(pairId)}`);
       const payload = await response.json();
@@ -369,7 +388,9 @@ const INDEX_HTML: &str = r##"<!doctype html>
       `;
     }
 
+    loadHealth();
     loadPairs();
+    setInterval(loadHealth, 15000);
     setInterval(loadPairs, 5000);
   </script>
 </body>

@@ -5,6 +5,7 @@ use axum::Router;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::error::AppError;
+use crate::domain::ExchangeId;
 use crate::service::aggregator::AggregatorQuery;
 use crate::store::view_store::{PairDetailView, SummaryView};
 
@@ -12,21 +13,28 @@ use crate::store::view_store::{PairDetailView, SummaryView};
 pub struct WebState {
     pub summary_rx: watch::Receiver<Arc<SummaryView>>,
     pub query_tx: mpsc::Sender<AggregatorQuery>,
+    pub enabled_exchanges: Arc<[ExchangeId]>,
 }
 
 impl WebState {
     pub fn new(
         summary_rx: watch::Receiver<Arc<SummaryView>>,
         query_tx: mpsc::Sender<AggregatorQuery>,
+        enabled_exchanges: Vec<ExchangeId>,
     ) -> Self {
         Self {
             summary_rx,
             query_tx,
+            enabled_exchanges: enabled_exchanges.into(),
         }
     }
 
     pub fn summary(&self) -> Arc<SummaryView> {
         self.summary_rx.borrow().clone()
+    }
+
+    pub fn enabled_exchanges(&self) -> &[ExchangeId] {
+        self.enabled_exchanges.as_ref()
     }
 
     pub async fn pair_detail(&self, pair_id: String) -> PairDetailView {

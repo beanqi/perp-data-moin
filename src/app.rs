@@ -14,7 +14,11 @@ use crate::web::{WebState, serve};
 
 pub async fn run() -> Result<(), AppError> {
     let config = AppConfig::load_from_path(Path::new("config.toml"))?;
-    let adapters = build_adapters();
+    let adapters: Vec<_> = build_adapters()
+        .into_iter()
+        .filter(|adapter| config.monitor.includes_exchange(adapter.id()))
+        .collect();
+    let enabled_exchanges: Vec<_> = adapters.iter().map(|adapter| adapter.id()).collect();
     let aligner = SymbolAligner::new();
 
     let discovery = discover_markets(&adapters, &aligner).await;
@@ -24,6 +28,7 @@ pub async fn run() -> Result<(), AppError> {
 
     let pairs = build_monitor_pairs(&discovery.markets);
     info!(
+        enabled_exchanges = ?enabled_exchanges,
         markets = discovery.markets.len(),
         pairs = pairs.len(),
         "application bootstrapped discovery graph"
@@ -49,7 +54,7 @@ pub async fn run() -> Result<(), AppError> {
     }
     drop(tx);
 
-    let web_state = WebState::new(summary_rx, query_tx);
+    let web_state = WebState::new(summary_rx, query_tx, enabled_exchanges);
     let web_future = serve(config.web.bind.clone(), web_state);
     tokio::pin!(web_future);
 

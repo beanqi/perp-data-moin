@@ -11,6 +11,7 @@ pub struct PairListResponse {
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
     pub exchanges: Vec<ExchangeHealthView>,
+    pub enabled_exchanges: Vec<ExchangeId>,
     pub pair_count: usize,
 }
 

@@ -3,12 +3,15 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::ExchangeId;
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub web: WebConfig,
+    #[serde(default)]
+    pub monitor: MonitorConfig,
     #[serde(default)]
     pub display: DisplayConfig,
 }
@@ -29,6 +32,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             web: WebConfig::default(),
+            monitor: MonitorConfig::default(),
             display: DisplayConfig::default(),
         }
     }
@@ -45,6 +49,18 @@ impl Default for WebConfig {
         Self {
             bind: default_bind(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MonitorConfig {
+    #[serde(default)]
+    pub enabled_exchanges: Vec<ExchangeId>,
+}
+
+impl MonitorConfig {
+    pub fn includes_exchange(&self, exchange: ExchangeId) -> bool {
+        self.enabled_exchanges.is_empty() || self.enabled_exchanges.contains(&exchange)
     }
 }
 
