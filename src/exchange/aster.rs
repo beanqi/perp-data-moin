@@ -17,7 +17,7 @@ use crate::domain::{DiscoveredMarket, ExchangeId, InstrumentKey, MarketKind, Mar
 use crate::exchange::adapter::ExchangeAdapter;
 use crate::exchange::event::{EventSender, ExchangeEvent};
 
-const SPOT_REST_BASE: &str = "https://api.asterdex.com";
+const SPOT_REST_BASE: &str = "https://sapi.asterdex.com";
 const SPOT_WS_BASE: &str = "wss://sstream.asterdex.com";
 const PERP_REST_BASE: &str = "https://fapi.asterdex.com";
 const PERP_WS_BASE: &str = "wss://fstream.asterdex.com";
