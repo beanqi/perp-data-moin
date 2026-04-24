@@ -1,10 +1,15 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::domain::{MarketKind, MarketRef, MonitorPair, PairKind};
 
 pub fn build_monitor_pairs(markets: &[MarketRef]) -> Vec<MonitorPair> {
     let mut grouped = BTreeMap::<String, Vec<MarketRef>>::new();
+    let mut seen_markets = HashSet::new();
     for market in markets.iter().cloned() {
+        if !seen_markets.insert(market.key()) {
+            continue;
+        }
+
         grouped
             .entry(market.instrument.canonical_symbol.clone())
             .or_default()
@@ -48,5 +53,9 @@ pub fn build_monitor_pairs(markets: &[MarketRef]) -> Vec<MonitorPair> {
         }
     }
 
+    let mut seen_pairs = HashSet::new();
     pairs
+        .into_iter()
+        .filter(|pair| seen_pairs.insert(pair.pair_id.clone()))
+        .collect()
 }
