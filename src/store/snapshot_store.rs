@@ -16,6 +16,7 @@ impl SnapshotStore {
         let entry = self.markets.entry(key.clone()).or_default();
         entry.bid = Some(bid);
         entry.ask = Some(ask);
+        entry.book_updated_at_ms = ts_ms;
         entry.updated_at_ms = ts_ms;
     }
 
@@ -42,6 +43,7 @@ impl SnapshotStore {
     pub fn update_index_price(&mut self, key: &MarketKey, price: f64, ts_ms: i64) {
         let entry = self.markets.entry(key.clone()).or_default();
         entry.index_price = Some(price);
+        entry.index_updated_at_ms = ts_ms;
         entry.updated_at_ms = ts_ms;
     }
 

@@ -76,9 +76,9 @@
     }
 
     .app-shell {
-      width: min(1480px, 100%);
+      width: min(1760px, 100%);
       margin: 0 auto;
-      padding: 16px 22px 48px;
+      padding: 14px 12px 44px;
     }
 
     .top-chrome {
@@ -852,6 +852,68 @@
       border-bottom: 0;
     }
 
+    .price-snapshot-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .price-snapshot-card {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(23, 33, 38, 0.08);
+      border-radius: var(--radius-md);
+      background: #fffdf8;
+    }
+
+    .price-snapshot-head {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .price-snapshot-title {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .price-snapshot-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .price-snapshot-lines {
+      display: grid;
+      gap: 8px;
+    }
+
+    .price-snapshot-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .price-snapshot-line span:first-child {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .price-time {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
     .empty-state,
     .empty-chart {
       padding: 28px 18px;
@@ -1257,6 +1319,80 @@
       return `
         <span>${formatter(left)}</span>
         <span>${formatter(right)}</span>
+      `;
+    }
+
+    function snapshotSideLabel(item, side) {
+      const leg = side === "left" ? item.pair.left : item.pair.right;
+      return `${leg.exchange}/${leg.instrument.market_kind}`;
+    }
+
+    function snapshotBookPrice(snapshot, action) {
+      if (!snapshot) {
+        return null;
+      }
+      return action === "buy" ? snapshot.ask : snapshot.bid;
+    }
+
+    function snapshotBookUpdatedAt(snapshot) {
+      return Number(snapshot?.book_updated_at_ms || 0) || Number(snapshot?.updated_at_ms || 0) || null;
+    }
+
+    function snapshotIndexUpdatedAt(snapshot) {
+      return Number(snapshot?.index_updated_at_ms || 0) || null;
+    }
+
+    function renderPriceTime(ts) {
+      const freshClass = ts && Date.now() - Number(ts) <= FRESH_WINDOW_MS ? "" : "stale";
+      return `<span class="price-time"><span class="fresh-dot ${freshClass}"></span>${formatShortTime(ts)}</span>`;
+    }
+
+    function renderSnapshotCard(item, side, action, label) {
+      const snapshot = side === "left" ? item.left_snapshot : item.right_snapshot;
+      const bookLabel = action === "buy" ? "买入看卖盘" : "卖出看买盘";
+      const bookPrice = snapshotBookPrice(snapshot, action);
+      const bookUpdatedAt = snapshotBookUpdatedAt(snapshot);
+      const indexUpdatedAt = snapshotIndexUpdatedAt(snapshot);
+      return `
+        <article class="price-snapshot-card">
+          <div class="price-snapshot-head">
+            <div>
+              <div class="price-snapshot-title">${label}</div>
+              <div class="price-snapshot-subtitle">${escapeHtml(snapshotSideLabel(item, side))}</div>
+            </div>
+            <span class="badge">${bookLabel}</span>
+          </div>
+          <div class="price-snapshot-lines">
+            <div class="price-snapshot-line">
+              <span>最新深度价</span>
+              <span class="number">${formatPrice(bookPrice)}</span>
+            </div>
+            <div class="price-snapshot-line">
+              <span>深度更新时间</span>
+              ${renderPriceTime(bookUpdatedAt)}
+            </div>
+            <div class="price-snapshot-line">
+              <span>指数价格</span>
+              <span class="number">${formatPrice(snapshot?.index_price)}</span>
+            </div>
+            <div class="price-snapshot-line">
+              <span>指数更新时间</span>
+              ${renderPriceTime(indexUpdatedAt)}
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderPriceSnapshots(item) {
+      return `
+        <section class="detail-section">
+          <div class="section-title">最新价格与更新时间</div>
+          <div class="price-snapshot-grid">
+            ${renderSnapshotCard(item, "left", "buy", "开左腿")}
+            ${renderSnapshotCard(item, "right", "sell", "平右腿")}
+          </div>
+        </section>
       `;
     }
 
@@ -1718,6 +1854,8 @@
               <div class="metric-value">${formatSignedPercentFromBps(item.metrics.index_diff_bps)}</div>
             </div>
           </section>
+
+          ${renderPriceSnapshots(item)}
 
           <section class="detail-section">
             <div class="section-title">最近 30 分钟价差折线图<span class="badge">${payload.spread_history.length} 点</span></div>
