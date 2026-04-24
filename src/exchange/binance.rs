@@ -22,6 +22,7 @@ const SPOT_WS_BASE: &str = "wss://stream.binance.com:9443";
 const PERP_REST_BASE: &str = "https://fapi.binance.com";
 const PERP_WS_BASE: &str = "wss://fstream.binance.com";
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
+const REST_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const FUNDING_SYNC_INTERVAL: Duration = Duration::from_secs(300);
 const FUNDING_LOOKBACK_MS: i64 = 24 * 60 * 60 * 1000;
 const BOOK_TICKER_STREAM_CHUNK: usize = 200;
@@ -135,6 +136,11 @@ impl ExchangeAdapter for BinanceAdapter {
         }
 
         let mut handles = Vec::new();
+        handles.push(tokio::spawn(run_rest_snapshot_refresh(
+            self.client.clone(),
+            catalog.clone(),
+            tx.clone(),
+        )));
 
         for chunk in catalog.spot_symbols.chunks(BOOK_TICKER_STREAM_CHUNK) {
             if chunk.is_empty() {
@@ -208,6 +214,26 @@ struct BinanceCatalog {
     perp_symbols: Arc<Vec<String>>,
     spot_markets: SharedMarketMap,
     perp_markets: SharedMarketMap,
+}
+
+async fn run_rest_snapshot_refresh(client: Client, catalog: BinanceCatalog, tx: EventSender) {
+    loop {
+        sleep(REST_REFRESH_INTERVAL).await;
+
+        match seed_initial_state(&client, &catalog, &tx).await {
+            Ok(()) => {
+                send_health(&tx, true, Some("binance rest snapshot refreshed".to_owned())).await;
+            }
+            Err(err) => {
+                send_health(
+                    &tx,
+                    false,
+                    Some(format!("binance rest snapshot refresh failed: {err}")),
+                )
+                .await;
+            }
+        }
+    }
 }
 
 fn build_market_ref(
@@ -574,14 +600,15 @@ async fn handle_spot_book_ticker_message(
     markets: &SharedMarketMap,
     tx: &EventSender,
 ) -> Result<(), String> {
-    let wrapper = serde_json::from_str::<CombinedStream<BookTickerWs>>(payload)
+    let update = serde_json::from_str::<MaybeCombinedStream<BookTickerWs>>(payload)
         .map_err(|err| format!("spot book ticker parse error: {err}"))?;
-    let Some(market) = markets.get(&wrapper.data.symbol) else {
+    let update = update.into_inner();
+    let Some(market) = markets.get(&update.symbol) else {
         return Ok(());
     };
     let (Some(bid), Some(ask)) = (
-        parse_f64(&wrapper.data.bid_price),
-        parse_f64(&wrapper.data.ask_price),
+        parse_f64(&update.bid_price),
+        parse_f64(&update.ask_price),
     ) else {
         return Ok(());
     };
@@ -634,8 +661,9 @@ async fn handle_perp_book_ticker_message(
     markets: &SharedMarketMap,
     tx: &EventSender,
 ) -> Result<(), String> {
-    let update = serde_json::from_str::<BookTickerWs>(payload)
+    let update = serde_json::from_str::<MaybeCombinedStream<BookTickerWs>>(payload)
         .map_err(|err| format!("perp book ticker parse error: {err}"))?;
+    let update = update.into_inner();
     let Some(market) = markets.get(&update.symbol) else {
         return Ok(());
     };
@@ -958,6 +986,22 @@ struct FundingRateRest {
     funding_rate: String,
     #[serde(rename = "fundingTime")]
     funding_time: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum MaybeCombinedStream<T> {
+    Combined(CombinedStream<T>),
+    Raw(T),
+}
+
+impl<T> MaybeCombinedStream<T> {
+    fn into_inner(self) -> T {
+        match self {
+            Self::Combined(wrapper) => wrapper.data,
+            Self::Raw(value) => value,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
