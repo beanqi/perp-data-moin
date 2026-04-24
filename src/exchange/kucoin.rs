@@ -1177,7 +1177,7 @@ async fn handle_perp_ticker_message(
 ) -> Result<(), String> {
     let message = serde_json::from_str::<PerpTickerWsMessage>(payload)
         .map_err(|err| format!("perp ticker parse error: {err}"))?;
-    let Some(market) = markets.get(&message.subject) else {
+    let Some(market) = markets.get(&message.data.symbol) else {
         return Ok(());
     };
     let Some(bid) = parse_f64(&message.data.best_bid_price) else {
@@ -1790,12 +1790,12 @@ struct SpotMarketChange24h {
 
 #[derive(Debug, Deserialize)]
 struct PerpTickerWsMessage {
-    subject: String,
     data: PerpTickerWsData,
 }
 
 #[derive(Debug, Deserialize)]
 struct PerpTickerWsData {
+    symbol: String,
     #[serde(rename = "bestBidPrice")]
     best_bid_price: String,
     #[serde(rename = "bestAskPrice")]
