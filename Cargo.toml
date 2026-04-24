@@ -3,6 +3,13 @@ name = "perp-data-moin"
 version = "0.1.0"
 edition = "2024"
 
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
 [dependencies]
 async-trait = "0.1.89"
 axum = "0.7.9"
