@@ -1083,6 +1083,7 @@
 
   <script>
     const FRESH_WINDOW_MS = 60 * 1000;
+    const SPREAD_CHART_WINDOW_MS = 30 * 60 * 1000;
 
     const elements = {
       tbody: document.querySelector("#pairs-table tbody"),
@@ -1602,9 +1603,10 @@
     }
 
     function renderSpreadChart(points) {
-      const clean = points
-        .filter(point => Number.isFinite(Number(point.open_spread_bps)) && Number.isFinite(Number(point.close_spread_bps)))
-        .slice(-120);
+      const numericPoints = points
+        .filter(point => Number.isFinite(Number(point.ts_ms)) && Number.isFinite(Number(point.open_spread_bps)) && Number.isFinite(Number(point.close_spread_bps)));
+      const latestTs = numericPoints.length > 0 ? Number(numericPoints[numericPoints.length - 1].ts_ms) : 0;
+      const clean = numericPoints.filter(point => Number(point.ts_ms) >= latestTs - SPREAD_CHART_WINDOW_MS);
 
       if (clean.length < 2) {
         return '<div class="empty-chart">暂无足够的价差历史用于绘制折线图</div>';
@@ -1625,11 +1627,14 @@
       min -= spread * 0.12;
       max += spread * 0.12;
 
-      const xFor = index => padX + (index / (clean.length - 1)) * (width - padX * 2);
+      const startTs = Math.min(...clean.map(point => Number(point.ts_ms)));
+      const endTs = Math.max(...clean.map(point => Number(point.ts_ms)));
+      const timeRange = Math.max(endTs - startTs, 1);
+      const xFor = tsMs => padX + ((Number(tsMs) - startTs) / timeRange) * (width - padX * 2);
       const yFor = value => height - padY - ((value - min) / (max - min)) * (height - padY * 2);
       const pathFor = key => clean.map((point, index) => {
         const command = index === 0 ? "M" : "L";
-        return `${command} ${xFor(index).toFixed(2)} ${yFor(Number(point[key])).toFixed(2)}`;
+        return `${command} ${xFor(point.ts_ms).toFixed(2)} ${yFor(Number(point[key])).toFixed(2)}`;
       }).join(" ");
 
       const grid = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
