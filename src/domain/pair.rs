@@ -26,11 +26,13 @@ impl MonitorPair {
         kind: PairKind,
     ) -> Self {
         let pair_id = format!(
-            "{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}:{}",
             canonical_symbol.replace('/', "_"),
             left.exchange,
+            left.instrument.market_kind,
             left.market_id,
             right.exchange,
+            right.instrument.market_kind,
             right.market_id
         );
 
