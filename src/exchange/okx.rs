@@ -95,6 +95,9 @@ impl OkxAdapter {
             let Some((base, quote)) = split_okx_symbol(&instrument.uly) else {
                 continue;
             };
+            if !instrument.settle_ccy.eq_ignore_ascii_case(&quote) {
+                continue;
+            }
 
             let market = build_perp_market_ref(&instrument, base, quote);
             perp_market_ids.push(market.market_id.clone());
@@ -946,6 +949,7 @@ struct InstrumentRest {
     uly: String,
     base_ccy: String,
     quote_ccy: String,
+    settle_ccy: String,
     state: String,
 }
 
