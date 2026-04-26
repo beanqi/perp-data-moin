@@ -582,7 +582,10 @@ async fn handle_spot_ticker_message(
         .map_err(|err| format!("spot ticker parse error: {err}"))?;
 
     for update in message.data {
-        let Some(market) = markets.get(&update.inst_id) else {
+        let Some(inst_id) = ws_inst_id(&update.inst_id, &update.symbol) else {
+            continue;
+        };
+        let Some(market) = markets.get(inst_id) else {
             continue;
         };
         let ts_ms = update
@@ -628,7 +631,10 @@ async fn handle_perp_ticker_message(
         .map_err(|err| format!("perp ticker parse error: {err}"))?;
 
     for update in message.data {
-        let Some(market) = markets.get(&update.inst_id) else {
+        let Some(inst_id) = ws_inst_id(&update.inst_id, &update.symbol) else {
+            continue;
+        };
+        let Some(market) = markets.get(inst_id) else {
             continue;
         };
         let ts_ms = update
@@ -818,6 +824,10 @@ fn parse_i64(value: &str) -> Option<i64> {
     value.parse::<i64>().ok()
 }
 
+fn ws_inst_id<'a>(inst_id: &'a Option<String>, symbol: &'a Option<String>) -> Option<&'a str> {
+    inst_id.as_deref().or(symbol.as_deref())
+}
+
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -950,8 +960,10 @@ struct SpotTickerWsMessage {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SpotTickerWsData {
-    #[serde(alias = "symbol")]
-    inst_id: String,
+    #[serde(default)]
+    inst_id: Option<String>,
+    #[serde(default)]
+    symbol: Option<String>,
     #[serde(default)]
     bid_pr: Option<String>,
     #[serde(default)]
@@ -970,8 +982,10 @@ struct PerpTickerWsMessage {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PerpTickerWsData {
-    #[serde(alias = "symbol")]
-    inst_id: String,
+    #[serde(default)]
+    inst_id: Option<String>,
+    #[serde(default)]
+    symbol: Option<String>,
     #[serde(default)]
     bid_pr: Option<String>,
     #[serde(default)]
