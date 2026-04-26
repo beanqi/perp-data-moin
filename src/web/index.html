@@ -1691,24 +1691,45 @@
       }
     }
 
+    function getDetailScrollTop() {
+      return elements.detailPanel.querySelector(".detail-body")?.scrollTop || 0;
+    }
+
+    function restoreDetailScrollTop(scrollTop) {
+      const detailBody = elements.detailPanel.querySelector(".detail-body");
+      if (!detailBody) {
+        return;
+      }
+      const maxScrollTop = Math.max(0, detailBody.scrollHeight - detailBody.clientHeight);
+      detailBody.scrollTop = Math.min(scrollTop, maxScrollTop);
+    }
+
+    function setDetailPanelHtml(html, options = {}) {
+      const scrollTop = options.preserveScroll ? getDetailScrollTop() : 0;
+      elements.detailPanel.innerHTML = html;
+      if (options.preserveScroll) {
+        requestAnimationFrame(() => restoreDetailScrollTop(scrollTop));
+      }
+    }
+
     function renderDetailIdle(title, description) {
-      elements.detailPanel.innerHTML = `
+      setDetailPanelHtml(`
         <div class="detail-head">
           <div class="badge badge-warn">等待选择</div>
           <div class="detail-symbol">${escapeHtml(title)}</div>
           <div class="detail-combo">${escapeHtml(description)}</div>
         </div>
-      `;
+      `);
     }
 
     function renderDetailLoading() {
-      elements.detailPanel.innerHTML = `
+      setDetailPanelHtml(`
         <div class="detail-head">
           <div class="badge">正在加载</div>
           <div class="detail-symbol">同步组合详情</div>
           <div class="detail-combo">正在拉取折线图和结算历史，请稍候。</div>
         </div>
-      `;
+      `);
     }
 
     function render() {
@@ -1816,20 +1837,20 @@
       `;
     }
 
-    function renderDetail(payload) {
+    function renderDetail(payload, options = {}) {
       if (!payload.item) {
-        elements.detailPanel.innerHTML = `
+        setDetailPanelHtml(`
           <div class="detail-head">
             <div class="badge badge-warn">未找到</div>
             <div class="detail-symbol">监控组合不存在</div>
             <div class="detail-combo">当前选中的组合可能已被筛选或刷新移除。</div>
           </div>
-        `;
+        `, options);
         return;
       }
 
       const item = payload.item;
-      elements.detailPanel.innerHTML = `
+      setDetailPanelHtml(`
         <div class="detail-head">
           <div class="badge">${pairKindLabel(item.pair.kind)}</div>
           <div class="detail-symbol">${escapeHtml(item.pair.canonical_symbol)}</div>
@@ -1883,7 +1904,7 @@
           ${renderFundingHistory("左腿费率结算", payload.left_funding_history)}
           ${renderFundingHistory("右腿费率结算", payload.right_funding_history)}
         </div>
-      `;
+      `, options);
     }
 
     async function loadPairs() {
@@ -1936,17 +1957,18 @@
         if (requestId !== state.detailRequestId) {
           return;
         }
+        const preserveScroll = state.detailPairId === pairId;
         state.detailPairId = pairId;
         state.detailLoadedAt = Date.now();
-        renderDetail(payload);
+        renderDetail(payload, { preserveScroll });
       } catch (error) {
-        elements.detailPanel.innerHTML = `
+        setDetailPanelHtml(`
           <div class="detail-head">
             <div class="badge badge-warn">加载失败</div>
             <div class="detail-symbol">详情刷新失败</div>
             <div class="detail-combo">${escapeHtml(error.message)}</div>
           </div>
-        `;
+        `);
       }
     }
 
