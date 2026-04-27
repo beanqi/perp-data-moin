@@ -1044,10 +1044,7 @@ async fn handle_spot_market_payload(
     };
     let ts_ms = message.ts.unwrap_or_else(now_ms);
 
-    if let (Some(bid), Some(ask)) = (
-        best_price(message.tick.bid.as_deref()),
-        best_price(message.tick.ask.as_deref()),
-    ) {
+    if let (Some(bid), Some(ask)) = (message.tick.bid, message.tick.ask) {
         let _ = tx
             .send(ExchangeEvent::TopOfBook {
                 market: market.clone(),
@@ -1243,7 +1240,7 @@ fn parse_notify_ping(payload: &str) -> Option<i64> {
     serde_json::from_str::<NotifyPing>(payload)
         .ok()
         .filter(|message| message.op == "ping")
-        .map(|message| message.ts)
+        .and_then(|message| message.ts.or(message.ping))
 }
 
 fn parse_notify_control_message(payload: &str) -> Result<Option<String>, String> {
@@ -1253,7 +1250,7 @@ fn parse_notify_control_message(payload: &str) -> Result<Option<String>, String>
     };
 
     match message.op.as_deref() {
-        Some("sub") | Some("pong") => Ok(None),
+        Some("sub") | Some("pong") | Some("notify") => Ok(None),
         Some("error") | Some("close") => Ok(Some(format!(
             "huobi funding {}{}",
             message.op.unwrap_or_default(),
@@ -1483,6 +1480,28 @@ where
     })
 }
 
+fn de_opt_price_level<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(serde_json::Value::Number(number)) => number.as_f64(),
+        Some(serde_json::Value::String(value)) => value.parse::<f64>().ok(),
+        Some(serde_json::Value::Array(values)) => values.first().and_then(value_to_f64),
+        Some(serde_json::Value::Null) | None => None,
+        _ => None,
+    })
+}
+
+fn value_to_f64(value: &serde_json::Value) -> Option<f64> {
+    match value {
+        serde_json::Value::Number(number) => number.as_f64(),
+        serde_json::Value::String(value) => value.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
 fn de_opt_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
@@ -1624,10 +1643,10 @@ struct SpotTickerWsMessage {
 
 #[derive(Debug, Deserialize)]
 struct SpotTickerWsTick {
-    #[serde(default)]
-    bid: Option<Vec<f64>>,
-    #[serde(default)]
-    ask: Option<Vec<f64>>,
+    #[serde(default, deserialize_with = "de_opt_price_level")]
+    bid: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_price_level")]
+    ask: Option<f64>,
     #[serde(default, deserialize_with = "de_opt_f64")]
     vol: Option<f64>,
 }
@@ -1681,7 +1700,10 @@ struct MarketPing {
 #[derive(Debug, Deserialize)]
 struct NotifyPing {
     op: String,
-    ts: i64,
+    #[serde(default, deserialize_with = "de_opt_i64")]
+    ts: Option<i64>,
+    #[serde(default, deserialize_with = "de_opt_i64")]
+    ping: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
