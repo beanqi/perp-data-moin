@@ -792,6 +792,7 @@
     }
 
     .chart-wrap {
+      position: relative;
       overflow: hidden;
       border: 1px solid rgba(23, 33, 38, 0.08);
       border-radius: var(--radius-lg);
@@ -802,6 +803,10 @@
       display: block;
       width: 100%;
       height: auto;
+    }
+
+    .spread-chart-svg {
+      cursor: crosshair;
     }
 
     .chart-grid {
@@ -847,6 +852,125 @@
       stroke-linecap: round;
       stroke-linejoin: round;
       stroke-width: 2.5;
+    }
+
+    .chart-hover-layer {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+    }
+
+    .chart-wrap.is-chart-hovering .chart-hover-layer {
+      opacity: 1;
+    }
+
+    .chart-hover-line {
+      stroke: rgba(23, 33, 38, 0.38);
+      stroke-dasharray: 4 4;
+      stroke-width: 1.3;
+    }
+
+    .chart-hover-dot {
+      stroke: #fffdf8;
+      stroke-width: 2.2;
+    }
+
+    .chart-hover-dot-left-open,
+    .chart-tooltip-swatch-left-open {
+      fill: var(--brand);
+      background: var(--brand);
+    }
+
+    .chart-hover-dot-left-close,
+    .chart-tooltip-swatch-left-close {
+      fill: var(--brand);
+      background: var(--brand);
+    }
+
+    .chart-hover-dot-right-open,
+    .chart-tooltip-swatch-right-open {
+      fill: var(--amber);
+      background: var(--amber);
+    }
+
+    .chart-hover-dot-right-close,
+    .chart-tooltip-swatch-right-close {
+      fill: var(--amber);
+      background: var(--amber);
+    }
+
+    .chart-hit-area {
+      fill: transparent;
+      pointer-events: all;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 2;
+      min-width: 206px;
+      max-width: min(286px, calc(100% - 16px));
+      padding: 10px 11px;
+      border: 1px solid rgba(23, 33, 38, 0.14);
+      border-radius: var(--radius-md);
+      background: rgba(255, 253, 248, 0.98);
+      box-shadow: 0 14px 32px rgba(23, 33, 38, 0.16);
+      color: var(--ink);
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease;
+    }
+
+    .chart-wrap.is-chart-hovering .chart-tooltip {
+      opacity: 1;
+    }
+
+    .chart-tooltip-time {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .chart-tooltip-row {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto;
+      gap: 7px;
+      align-items: center;
+      margin-top: 6px;
+      font-weight: 800;
+    }
+
+    .chart-tooltip-swatch {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+    }
+
+    .chart-tooltip-label {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chart-tooltip-value {
+      display: grid;
+      gap: 2px;
+      justify-items: end;
+      font-family: var(--mono);
+      text-align: right;
+    }
+
+    .chart-tooltip-value small {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
     }
 
     .legend {
@@ -1210,6 +1334,44 @@
   <script>
     const FRESH_WINDOW_MS = 60 * 1000;
     const SPREAD_CHART_WINDOW_MS = 30 * 60 * 1000;
+    const SPREAD_CHART_SERIES = [
+      {
+        key: "leftOpen",
+        label: "左买右卖开",
+        direction: "left_buy_right_sell",
+        phase: "open",
+        lineClass: "chart-line-left-open",
+        dotClass: "chart-hover-dot-left-open",
+        swatchClass: "chart-tooltip-swatch-left-open",
+      },
+      {
+        key: "leftClose",
+        label: "左买右卖清",
+        direction: "left_buy_right_sell",
+        phase: "close",
+        lineClass: "chart-line-left-close",
+        dotClass: "chart-hover-dot-left-close",
+        swatchClass: "chart-tooltip-swatch-left-close",
+      },
+      {
+        key: "rightOpen",
+        label: "右买左卖开",
+        direction: "right_buy_left_sell",
+        phase: "open",
+        lineClass: "chart-line-right-open",
+        dotClass: "chart-hover-dot-right-open",
+        swatchClass: "chart-tooltip-swatch-right-open",
+      },
+      {
+        key: "rightClose",
+        label: "右买左卖清",
+        direction: "right_buy_left_sell",
+        phase: "close",
+        lineClass: "chart-line-right-close",
+        dotClass: "chart-hover-dot-right-close",
+        swatchClass: "chart-tooltip-swatch-right-close",
+      },
+    ];
 
     const elements = {
       tbody: document.querySelector("#pairs-table tbody"),
@@ -1251,6 +1413,7 @@
       onlyFresh: false,
       lastPairsAt: null,
       lastError: null,
+      spreadChartPoints: [],
     };
 
     const sortLabels = {
@@ -1360,6 +1523,24 @@
       const digits = percentDigits(percentValue);
       const prefix = signed && percentValue > 0 ? "+" : "";
       return `${prefix}${percentValue.toFixed(digits)}%`;
+    }
+
+    function formatBps(value, { signed = false } = {}) {
+      if (value == null || Number.isNaN(Number(value))) {
+        return "-";
+      }
+      const num = Number(value);
+      const abs = Math.abs(num);
+      const digits = abs >= 10 ? 2 : 3;
+      const prefix = signed && num > 0 ? "+" : "";
+      return `${prefix}${num.toFixed(digits)} bps`;
+    }
+
+    function clamp(value, min, max) {
+      if (max < min) {
+        return (min + max) / 2;
+      }
+      return Math.min(Math.max(value, min), max);
     }
 
     function formatSignedPercentFromBps(value) {
@@ -1905,15 +2086,13 @@
       const numericPoints = points
         .filter(point => {
           return Number.isFinite(Number(point.ts_ms))
-            && Number.isFinite(pointSpreadValue(point, "left_buy_right_sell", "open"))
-            && Number.isFinite(pointSpreadValue(point, "left_buy_right_sell", "close"))
-            && Number.isFinite(pointSpreadValue(point, "right_buy_left_sell", "open"))
-            && Number.isFinite(pointSpreadValue(point, "right_buy_left_sell", "close"));
+            && SPREAD_CHART_SERIES.every(series => Number.isFinite(pointSpreadValue(point, series.direction, series.phase)));
         });
       const latestTs = numericPoints.length > 0 ? Number(numericPoints[numericPoints.length - 1].ts_ms) : 0;
       const clean = numericPoints.filter(point => Number(point.ts_ms) >= latestTs - SPREAD_CHART_WINDOW_MS);
 
       if (clean.length < 2) {
+        state.spreadChartPoints = [];
         return '<div class="empty-chart">暂无足够的价差历史用于绘制折线图</div>';
       }
 
@@ -1921,12 +2100,9 @@
       const height = 220;
       const padX = 44;
       const padY = 26;
-      const values = clean.flatMap(point => [
-        pointSpreadValue(point, "left_buy_right_sell", "open"),
-        pointSpreadValue(point, "left_buy_right_sell", "close"),
-        pointSpreadValue(point, "right_buy_left_sell", "open"),
-        pointSpreadValue(point, "right_buy_left_sell", "close"),
-      ]);
+      const values = clean.flatMap(point => {
+        return SPREAD_CHART_SERIES.map(series => pointSpreadValue(point, series.direction, series.phase));
+      });
       let min = Math.min(...values);
       let max = Math.max(...values);
       if (min === max) {
@@ -1942,10 +2118,28 @@
       const timeRange = Math.max(endTs - startTs, 1);
       const xFor = tsMs => padX + ((Number(tsMs) - startTs) / timeRange) * (width - padX * 2);
       const yFor = value => height - padY - ((value - min) / (max - min)) * (height - padY * 2);
-      const pathFor = (direction, phase) => clean.map((point, index) => {
+      const pathFor = series => clean.map((point, index) => {
         const command = index === 0 ? "M" : "L";
-        return `${command} ${xFor(point.ts_ms).toFixed(2)} ${yFor(pointSpreadValue(point, direction, phase)).toFixed(2)}`;
+        return `${command} ${xFor(point.ts_ms).toFixed(2)} ${yFor(pointSpreadValue(point, series.direction, series.phase)).toFixed(2)}`;
       }).join(" ");
+      const chartPoints = clean.map(point => {
+        const x = xFor(point.ts_ms);
+        return {
+          tsMs: Number(point.ts_ms),
+          x,
+          values: SPREAD_CHART_SERIES.map(series => {
+            const value = pointSpreadValue(point, series.direction, series.phase);
+            return {
+              key: series.key,
+              label: series.label,
+              value,
+              y: yFor(value),
+              swatchClass: series.swatchClass,
+            };
+          }),
+        };
+      });
+      state.spreadChartPoints = chartPoints;
 
       const grid = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
         const y = padY + ratio * (height - padY * 2);
@@ -1957,16 +2151,21 @@
       }).join("");
 
       return `
-        <div class="chart-wrap">
-          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="双向开仓和清仓价差历史折线图">
+        <div class="chart-wrap spread-chart" data-chart-width="${width}" data-chart-height="${height}">
+          <svg class="spread-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="双向开仓和清仓价差历史折线图">
             ${grid}
-            <path class="chart-line-left-open" d="${pathFor("left_buy_right_sell", "open")}"></path>
-            <path class="chart-line-left-close" d="${pathFor("left_buy_right_sell", "close")}"></path>
-            <path class="chart-line-right-open" d="${pathFor("right_buy_left_sell", "open")}"></path>
-            <path class="chart-line-right-close" d="${pathFor("right_buy_left_sell", "close")}"></path>
+            ${SPREAD_CHART_SERIES.map(series => `<path class="${series.lineClass}" d="${pathFor(series)}"></path>`).join("")}
             <text class="chart-axis-label" x="${padX}" y="${height - 7}">${formatShortTime(clean[0].ts_ms)}</text>
             <text class="chart-axis-label" x="${width - padX - 70}" y="${height - 7}">${formatShortTime(clean[clean.length - 1].ts_ms)}</text>
+            <g class="chart-hover-layer" aria-hidden="true">
+              <line class="chart-hover-line" x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}"></line>
+              ${SPREAD_CHART_SERIES.map(series => `
+                <circle class="chart-hover-dot ${series.dotClass}" data-chart-dot="${series.key}" cx="${padX}" cy="${height - padY}" r="${series.phase === "open" ? "4.5" : "3.8"}"></circle>
+              `).join("")}
+            </g>
+            <rect class="chart-hit-area" x="${padX}" y="${padY}" width="${width - padX * 2}" height="${height - padY * 2}"></rect>
           </svg>
+          <div class="chart-tooltip" aria-hidden="true"></div>
           <div class="legend">
             <span><i class="open-line"></i>左买右卖开</span>
             <span><i class="open-dashed"></i>左买右卖清</span>
@@ -1976,6 +2175,117 @@
           </div>
         </div>
       `;
+    }
+
+    function nearestSpreadChartPoint(x) {
+      let nearest = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (const point of state.spreadChartPoints) {
+        const distance = Math.abs(point.x - x);
+        if (distance < nearestDistance) {
+          nearest = point;
+          nearestDistance = distance;
+        }
+      }
+      return nearest;
+    }
+
+    function renderSpreadChartTooltip(point) {
+      return `
+        <div class="chart-tooltip-time">${formatTime(point.tsMs)}</div>
+        ${point.values.map(value => `
+          <div class="chart-tooltip-row">
+            <span class="chart-tooltip-swatch ${value.swatchClass}"></span>
+            <span class="chart-tooltip-label">${escapeHtml(value.label)}</span>
+            <span class="chart-tooltip-value">
+              <span>${formatPercentFromBps(value.value, { signed: true })}</span>
+              <small>${formatBps(value.value, { signed: true })}</small>
+            </span>
+          </div>
+        `).join("")}
+      `;
+    }
+
+    function positionSpreadChartTooltip(chart, event) {
+      const tooltip = chart.querySelector(".chart-tooltip");
+      if (!tooltip) {
+        return;
+      }
+      const chartRect = chart.getBoundingClientRect();
+      const tooltipWidth = tooltip.offsetWidth || 206;
+      const tooltipHeight = tooltip.offsetHeight || 120;
+      const pointerX = event.clientX - chartRect.left + 14;
+      const pointerY = event.clientY - chartRect.top + 14;
+      const left = clamp(pointerX, 8, chart.clientWidth - tooltipWidth - 8);
+      const top = clamp(pointerY, 8, chart.clientHeight - tooltipHeight - 8);
+      tooltip.style.left = `${left.toFixed(1)}px`;
+      tooltip.style.top = `${top.toFixed(1)}px`;
+    }
+
+    function setSpreadChartHover(chart, point, event) {
+      const hoverLine = chart.querySelector(".chart-hover-line");
+      const tooltip = chart.querySelector(".chart-tooltip");
+      if (!hoverLine || !tooltip) {
+        return;
+      }
+
+      hoverLine.setAttribute("x1", point.x.toFixed(2));
+      hoverLine.setAttribute("x2", point.x.toFixed(2));
+      for (const value of point.values) {
+        const dot = chart.querySelector(`[data-chart-dot="${value.key}"]`);
+        if (!dot) {
+          continue;
+        }
+        dot.setAttribute("cx", point.x.toFixed(2));
+        dot.setAttribute("cy", value.y.toFixed(2));
+      }
+
+      tooltip.innerHTML = renderSpreadChartTooltip(point);
+      chart.classList.add("is-chart-hovering");
+      positionSpreadChartTooltip(chart, event);
+    }
+
+    function clearSpreadChartHover(chart) {
+      if (!chart) {
+        return;
+      }
+      chart.classList.remove("is-chart-hovering");
+    }
+
+    function handleSpreadChartPointerMove(event) {
+      const chart = event.target.closest(".spread-chart");
+      if (!chart || state.spreadChartPoints.length === 0) {
+        return;
+      }
+      const svg = chart.querySelector(".spread-chart-svg");
+      if (!svg) {
+        return;
+      }
+      const svgRect = svg.getBoundingClientRect();
+      if (
+        event.clientX < svgRect.left
+        || event.clientX > svgRect.right
+        || event.clientY < svgRect.top
+        || event.clientY > svgRect.bottom
+      ) {
+        clearSpreadChartHover(chart);
+        return;
+      }
+
+      const chartWidth = Number(chart.dataset.chartWidth) || 640;
+      const svgX = ((event.clientX - svgRect.left) / Math.max(svgRect.width, 1)) * chartWidth;
+      const point = nearestSpreadChartPoint(svgX);
+      if (point) {
+        setSpreadChartHover(chart, point, event);
+      }
+    }
+
+    function handleSpreadChartPointerOut(event) {
+      const chart = event.target.closest(".spread-chart");
+      const svg = chart?.querySelector(".spread-chart-svg");
+      if (chart && svg && (!event.relatedTarget || !chart.contains(event.relatedTarget) || !svg.contains(event.relatedTarget))) {
+        clearSpreadChartHover(chart);
+      }
     }
 
     function renderFundingHistory(title, records) {
@@ -2216,6 +2526,8 @@
 
     elements.tbody.addEventListener("click", handlePairSelection);
     elements.mobileList.addEventListener("click", handlePairSelection);
+    elements.detailPanel.addEventListener("pointermove", handleSpreadChartPointerMove);
+    elements.detailPanel.addEventListener("pointerout", handleSpreadChartPointerOut);
 
     let lastScrollY = window.scrollY;
     window.addEventListener("scroll", () => {
