@@ -143,16 +143,8 @@ impl RuntimeState {
 fn sort_pair_views(views: &mut [MonitorPairView], sort_by: DisplaySort) {
     match sort_by {
         DisplaySort::OpenSpreadAbs => views.sort_by(|left, right| {
-            let left_value = left
-                .metrics
-                .open_spread_bps
-                .map(f64::abs)
-                .unwrap_or_default();
-            let right_value = right
-                .metrics
-                .open_spread_bps
-                .map(f64::abs)
-                .unwrap_or_default();
+            let left_value = max_directional_spread_abs(left);
+            let right_value = max_directional_spread_abs(right);
             right_value.total_cmp(&left_value)
         }),
         DisplaySort::UpdatedAt => views
@@ -160,4 +152,16 @@ fn sort_pair_views(views: &mut [MonitorPairView], sort_by: DisplaySort) {
         DisplaySort::Symbol => views
             .sort_by(|left, right| left.pair.canonical_symbol.cmp(&right.pair.canonical_symbol)),
     }
+}
+
+fn max_directional_spread_abs(view: &MonitorPairView) -> f64 {
+    [
+        view.metrics.left_buy_right_sell_spread_bps,
+        view.metrics.right_buy_left_sell_spread_bps,
+    ]
+    .into_iter()
+    .flatten()
+    .map(f64::abs)
+    .max_by(f64::total_cmp)
+    .unwrap_or_default()
 }

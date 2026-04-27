@@ -6,6 +6,10 @@ use crate::domain::{MarketSnapshot, MonitorPair};
 pub struct MonitorMetrics {
     pub open_spread_bps: Option<f64>,
     pub close_spread_bps: Option<f64>,
+    pub left_buy_right_sell_spread_bps: Option<f64>,
+    pub left_buy_right_sell_close_spread_bps: Option<f64>,
+    pub right_buy_left_sell_spread_bps: Option<f64>,
+    pub right_buy_left_sell_close_spread_bps: Option<f64>,
     pub left_funding_rate: Option<f64>,
     pub right_funding_rate: Option<f64>,
     pub funding_diff_bps: Option<f64>,

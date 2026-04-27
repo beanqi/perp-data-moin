@@ -514,6 +514,36 @@
       font-weight: 850;
     }
 
+    .direction-spread {
+      display: grid;
+      gap: 4px;
+      min-width: 128px;
+      color: var(--ink-soft);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      line-height: 1.25;
+    }
+
+    .direction-spread-row {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    .direction-spread-label {
+      color: var(--muted);
+      font-family: Inter, system-ui, sans-serif;
+      font-weight: 850;
+    }
+
+    .metric-value .direction-spread {
+      min-width: 0;
+      font-size: 13px;
+    }
+
     .updated-cell {
       min-width: 132px;
       color: var(--muted);
@@ -785,7 +815,7 @@
       font-size: 11px;
     }
 
-    .chart-line-open {
+    .chart-line-left-open {
       fill: none;
       stroke: var(--brand);
       stroke-linecap: round;
@@ -793,12 +823,30 @@
       stroke-width: 3;
     }
 
-    .chart-line-close {
+    .chart-line-left-close {
+      fill: none;
+      stroke: var(--brand);
+      stroke-dasharray: 7 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2.5;
+    }
+
+    .chart-line-right-open {
       fill: none;
       stroke: var(--amber);
       stroke-linecap: round;
       stroke-linejoin: round;
       stroke-width: 3;
+    }
+
+    .chart-line-right-close {
+      fill: none;
+      stroke: var(--amber);
+      stroke-dasharray: 7 6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 2.5;
     }
 
     .legend {
@@ -831,6 +879,21 @@
 
     .legend .close-line {
       background: var(--amber);
+    }
+
+    .legend .open-dashed,
+    .legend .close-dashed {
+      background: transparent;
+      border-top: 3px dashed currentColor;
+      border-radius: 0;
+    }
+
+    .legend .open-dashed {
+      color: var(--brand);
+    }
+
+    .legend .close-dashed {
+      color: var(--amber);
     }
 
     .history-list {
@@ -1074,8 +1137,9 @@
       <label class="control">
         <span class="control-label">排序</span>
         <select id="sort-select">
-          <option value="open_spread_abs">开仓价差绝对值</option>
-          <option value="close_spread_abs">平仓价差绝对值</option>
+          <option value="direction_spread_abs">双向开仓价差绝对值</option>
+          <option value="left_buy_right_sell_spread_abs">左买右卖开仓价差绝对值</option>
+          <option value="right_buy_left_sell_spread_abs">右买左卖开仓价差绝对值</option>
           <option value="funding_diff_abs">费率差绝对值</option>
           <option value="index_diff_abs">指数价差绝对值</option>
           <option value="volume_24h">24h 成交额</option>
@@ -1095,15 +1159,15 @@
             <h2 class="panel-title" id="list-title">监控组合</h2>
             <p class="panel-subtitle" id="list-subtitle">正在加载监控数据</p>
           </div>
-          <span class="badge badge-warn" id="sort-badge">按开仓价差排序</span>
+          <span class="badge badge-warn" id="sort-badge">按双向开仓价差排序</span>
         </header>
         <div class="table-wrap">
           <table id="pairs-table">
             <thead>
               <tr>
                 <th data-sort="symbol">标的</th>
-                <th data-sort="open_spread_abs">开仓价差 (%)</th>
-                <th data-sort="close_spread_abs">平仓价差 (%)</th>
+                <th data-sort="left_buy_right_sell_spread_abs">左买右卖 (%)</th>
+                <th data-sort="right_buy_left_sell_spread_abs">右买左卖 (%)</th>
                 <th>当前费率 (%)</th>
                 <th data-sort="funding_diff_abs">费率差 (%)</th>
                 <th>指数价格</th>
@@ -1176,7 +1240,7 @@
       detailPairId: null,
       detailRequestId: 0,
       detailLoadedAt: 0,
-      sortKey: "open_spread_abs",
+      sortKey: "direction_spread_abs",
       sortDir: "desc",
       currentPage: 1,
       pageSize: 20,
@@ -1190,8 +1254,11 @@
     };
 
     const sortLabels = {
-      open_spread_abs: "开仓价差",
-      close_spread_abs: "平仓价差",
+      direction_spread_abs: "双向开仓价差",
+      left_buy_right_sell_spread_abs: "左买右卖开仓",
+      right_buy_left_sell_spread_abs: "右买左卖开仓",
+      open_spread_abs: "双向开仓价差",
+      close_spread_abs: "左买右卖清仓",
       funding_diff_abs: "费率差",
       index_diff_abs: "指数价差",
       volume_24h: "24h 成交额",
@@ -1200,10 +1267,13 @@
     };
 
     const sorters = {
-      open_spread_abs: item => Math.abs(metricValue(item.metrics.open_spread_bps)),
-      close_spread_abs: item => Math.abs(metricValue(item.metrics.close_spread_bps)),
-      funding_diff_abs: item => Math.abs(metricValue(item.metrics.funding_diff_bps)),
-      index_diff_abs: item => Math.abs(metricValue(item.metrics.index_diff_bps)),
+      direction_spread_abs: item => maxDirectionalSpreadAbs(item),
+      left_buy_right_sell_spread_abs: item => metricAbs(directionOpenSpread(item, "left_buy_right_sell")),
+      right_buy_left_sell_spread_abs: item => metricAbs(directionOpenSpread(item, "right_buy_left_sell")),
+      open_spread_abs: item => maxDirectionalSpreadAbs(item),
+      close_spread_abs: item => metricAbs(directionCloseSpread(item, "left_buy_right_sell")),
+      funding_diff_abs: item => metricAbs(item.metrics.funding_diff_bps),
+      index_diff_abs: item => metricAbs(item.metrics.index_diff_bps),
       volume_24h: item => metricValue(item.metrics.left_volume_24h, 0) + metricValue(item.metrics.right_volume_24h, 0),
       updated_at: item => Number(item.metrics.updated_at_ms || 0),
       symbol: item => item.pair.canonical_symbol,
@@ -1211,6 +1281,48 @@
 
     function metricValue(value, fallback = Number.NEGATIVE_INFINITY) {
       return value == null || Number.isNaN(Number(value)) ? fallback : Number(value);
+    }
+
+    function metricAbs(value) {
+      return value == null || Number.isNaN(Number(value)) ? Number.NEGATIVE_INFINITY : Math.abs(Number(value));
+    }
+
+    function directionOpenSpread(item, direction) {
+      if (direction === "left_buy_right_sell") {
+        return item.metrics.left_buy_right_sell_spread_bps ?? item.metrics.open_spread_bps;
+      }
+      return item.metrics.right_buy_left_sell_spread_bps;
+    }
+
+    function directionCloseSpread(item, direction) {
+      if (direction === "left_buy_right_sell") {
+        return item.metrics.left_buy_right_sell_close_spread_bps ?? item.metrics.close_spread_bps;
+      }
+      return item.metrics.right_buy_left_sell_close_spread_bps;
+    }
+
+    function renderDirectionSpreadPair(item, direction) {
+      return `
+        <div class="direction-spread">
+          <div class="direction-spread-row">
+            <span class="direction-spread-label">开</span>
+            ${formatSignedPercentFromBps(directionOpenSpread(item, direction))}
+          </div>
+          <div class="direction-spread-row">
+            <span class="direction-spread-label">清</span>
+            ${formatSignedPercentFromBps(directionCloseSpread(item, direction))}
+          </div>
+        </div>
+      `;
+    }
+
+    function maxDirectionalSpreadAbs(item) {
+      const values = [
+        directionOpenSpread(item, "left_buy_right_sell"),
+        directionOpenSpread(item, "right_buy_left_sell"),
+      ].filter(value => value != null && Number.isFinite(Number(value)));
+
+      return values.length ? Math.max(...values.map(value => Math.abs(Number(value)))) : Number.NEGATIVE_INFINITY;
     }
 
     function escapeHtml(value) {
@@ -1310,6 +1422,16 @@
       return kind === "spot_perp" ? "Spot / Perp" : "Perp / Perp";
     }
 
+    function legForSide(item, side) {
+      return side === "left" ? item.pair.left : item.pair.right;
+    }
+
+    function directionLabel(item, buySide, sellSide) {
+      const buyLeg = legForSide(item, buySide);
+      const sellLeg = legForSide(item, sellSide);
+      return `${buyLeg.exchange} 买 / ${sellLeg.exchange} 卖`;
+    }
+
     function isFresh(item) {
       const updatedAt = Number(item.metrics.updated_at_ms || 0);
       return updatedAt > 0 && Date.now() - updatedAt <= FRESH_WINDOW_MS;
@@ -1323,7 +1445,7 @@
     }
 
     function snapshotSideLabel(item, side) {
-      const leg = side === "left" ? item.pair.left : item.pair.right;
+      const leg = legForSide(item, side);
       return `${leg.exchange}/${leg.instrument.market_kind}`;
     }
 
@@ -1338,46 +1460,47 @@
       return Number(snapshot?.book_updated_at_ms || 0) || Number(snapshot?.updated_at_ms || 0) || null;
     }
 
-    function snapshotIndexUpdatedAt(snapshot) {
-      return Number(snapshot?.index_updated_at_ms || 0) || null;
-    }
-
     function renderPriceTime(ts) {
       const freshClass = ts && Date.now() - Number(ts) <= FRESH_WINDOW_MS ? "" : "stale";
       return `<span class="price-time"><span class="fresh-dot ${freshClass}"></span>${formatShortTime(ts)}</span>`;
     }
 
-    function renderSnapshotCard(item, side, action, label) {
-      const snapshot = side === "left" ? item.left_snapshot : item.right_snapshot;
-      const bookLabel = action === "buy" ? "买入看卖盘" : "卖出看买盘";
-      const bookPrice = snapshotBookPrice(snapshot, action);
-      const bookUpdatedAt = snapshotBookUpdatedAt(snapshot);
-      const indexUpdatedAt = snapshotIndexUpdatedAt(snapshot);
+    function renderDirectionSnapshotCard(item, buySide, sellSide, spreadDirection) {
+      const buySnapshot = buySide === "left" ? item.left_snapshot : item.right_snapshot;
+      const sellSnapshot = sellSide === "left" ? item.left_snapshot : item.right_snapshot;
+      const buyPrice = snapshotBookPrice(buySnapshot, "buy");
+      const sellPrice = snapshotBookPrice(sellSnapshot, "sell");
+      const buyUpdatedAt = snapshotBookUpdatedAt(buySnapshot);
+      const sellUpdatedAt = snapshotBookUpdatedAt(sellSnapshot);
       return `
         <article class="price-snapshot-card">
           <div class="price-snapshot-head">
             <div>
-              <div class="price-snapshot-title">${label}</div>
-              <div class="price-snapshot-subtitle">${escapeHtml(snapshotSideLabel(item, side))}</div>
+              <div class="price-snapshot-title">${escapeHtml(directionLabel(item, buySide, sellSide))}</div>
+              <div class="price-snapshot-subtitle">${escapeHtml(snapshotSideLabel(item, buySide))} → ${escapeHtml(snapshotSideLabel(item, sellSide))}</div>
             </div>
-            <span class="badge">${bookLabel}</span>
+            <span class="badge">方向价差</span>
           </div>
           <div class="price-snapshot-lines">
             <div class="price-snapshot-line">
-              <span>最新深度价</span>
-              <span class="number">${formatPrice(bookPrice)}</span>
+              <span>开仓价差</span>
+              ${formatSignedPercentFromBps(directionOpenSpread(item, spreadDirection))}
+            </div>
+            <div class="price-snapshot-line">
+              <span>清仓价差</span>
+              ${formatSignedPercentFromBps(directionCloseSpread(item, spreadDirection))}
+            </div>
+            <div class="price-snapshot-line">
+              <span>买入价 / 卖盘</span>
+              <span class="number">${formatPrice(buyPrice)}</span>
+            </div>
+            <div class="price-snapshot-line">
+              <span>卖出价 / 买盘</span>
+              <span class="number">${formatPrice(sellPrice)}</span>
             </div>
             <div class="price-snapshot-line">
               <span>深度更新时间</span>
-              ${renderPriceTime(bookUpdatedAt)}
-            </div>
-            <div class="price-snapshot-line">
-              <span>指数价格</span>
-              <span class="number">${formatPrice(snapshot?.index_price)}</span>
-            </div>
-            <div class="price-snapshot-line">
-              <span>指数更新时间</span>
-              ${renderPriceTime(indexUpdatedAt)}
+              <span>${renderPriceTime(buyUpdatedAt)} / ${renderPriceTime(sellUpdatedAt)}</span>
             </div>
           </div>
         </article>
@@ -1387,10 +1510,10 @@
     function renderPriceSnapshots(item) {
       return `
         <section class="detail-section">
-          <div class="section-title">最新价格与更新时间</div>
+          <div class="section-title">双向可成交价格</div>
           <div class="price-snapshot-grid">
-            ${renderSnapshotCard(item, "left", "buy", "开左腿")}
-            ${renderSnapshotCard(item, "right", "sell", "平右腿")}
+            ${renderDirectionSnapshotCard(item, "left", "right", "left_buy_right_sell")}
+            ${renderDirectionSnapshotCard(item, "right", "left", "right_buy_left_sell")}
           </div>
         </section>
       `;
@@ -1431,7 +1554,7 @@
 
     function filteredAndSortedPairs() {
       const items = state.pairs.filter(matchesFilters);
-      const accessor = sorters[state.sortKey] || sorters.open_spread_abs;
+      const accessor = sorters[state.sortKey] || sorters.direction_spread_abs;
 
       return [...items].sort((left, right) => {
         const leftValue = accessor(left);
@@ -1464,13 +1587,19 @@
       };
     }
 
-    function bestAbs(items, key) {
+    function bestDirectionalSpread(items) {
       return items.reduce((best, item) => {
-        const value = item.metrics[key];
-        if (value == null) {
-          return best;
+        const values = [
+          directionOpenSpread(item, "left_buy_right_sell"),
+          directionOpenSpread(item, "right_buy_left_sell"),
+        ].filter(value => value != null && Number.isFinite(Number(value)));
+
+        for (const value of values) {
+          if (best == null || Math.abs(Number(value)) > Math.abs(best)) {
+            best = Number(value);
+          }
         }
-        return Math.abs(value) > Math.abs(best ?? 0) ? value : best;
+        return best;
       }, null);
     }
 
@@ -1483,10 +1612,10 @@
     function renderSummary(items) {
       const freshCount = state.pairs.filter(isFresh).length;
       const fundingCount = state.pairs.filter(item => item.metrics.funding_diff_bps != null).length;
-      const bestOpen = bestAbs(state.pairs, "open_spread_bps");
+      const bestSpread = bestDirectionalSpread(state.pairs);
       const cards = [
         ["组合总数", state.pairs.length, `${items.length} 条匹配当前筛选`],
-        ["最大开仓价差", bestOpen == null ? "-" : formatPercentFromBps(Math.abs(bestOpen)), "按绝对值统计全量列表"],
+        ["最大方向价差", bestSpread == null ? "-" : formatPercentFromBps(Math.abs(bestSpread)), "按双向绝对值统计全量列表"],
         ["费率差可用", fundingCount, "有双腿资金费率差的数据"],
         ["最近更新", freshCount, `60 秒内更新，成交额 ${formatVolume(totalVolume(items))}`],
       ];
@@ -1614,8 +1743,8 @@
               </div>
               <div class="combo-line">${escapeHtml(comboLabel(item))}</div>
             </td>
-            <td>${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</td>
-            <td>${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</td>
+            <td>${renderDirectionSpreadPair(item, "left_buy_right_sell")}</td>
+            <td>${renderDirectionSpreadPair(item, "right_buy_left_sell")}</td>
             <td><div class="pair-value">${pairValue(item.metrics.left_funding_rate, item.metrics.right_funding_rate, formatRate)}</div></td>
             <td>${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</td>
             <td><div class="pair-value">${pairValue(item.metrics.left_index_price, item.metrics.right_index_price, formatPrice)}</div></td>
@@ -1652,12 +1781,12 @@
             </div>
             <div class="card-metrics">
               <div class="mini-metric">
-                <div class="metric-label">开仓</div>
-                <div class="metric-value">${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</div>
+                <div class="metric-label">左买右卖</div>
+                <div class="metric-value">${renderDirectionSpreadPair(item, "left_buy_right_sell")}</div>
               </div>
               <div class="mini-metric">
-                <div class="metric-label">平仓</div>
-                <div class="metric-value">${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</div>
+                <div class="metric-label">右买左卖</div>
+                <div class="metric-value">${renderDirectionSpreadPair(item, "right_buy_left_sell")}</div>
               </div>
               <div class="mini-metric">
                 <div class="metric-label">费率差</div>
@@ -1675,7 +1804,7 @@
 
     function renderSortState() {
       elements.sortSelect.value = state.sortKey;
-      elements.sortBadge.textContent = `${sortLabels[state.sortKey] || "开仓价差"} ${state.sortDir === "asc" ? "升序" : "降序"}`;
+      elements.sortBadge.textContent = `${sortLabels[state.sortKey] || "双向开仓价差"} ${state.sortDir === "asc" ? "升序" : "降序"}`;
       elements.sortDirectionToggle.textContent = state.sortDir === "asc" ? "升序" : "降序";
       elements.sortDirectionToggle.setAttribute("aria-pressed", String(state.sortDir === "asc"));
       elements.sortHeaders.forEach(header => {
@@ -1732,6 +1861,19 @@
       `);
     }
 
+    function pointSpreadValue(point, direction, phase) {
+      if (direction === "left_buy_right_sell" && phase === "open") {
+        return Number(point.left_buy_right_sell_spread_bps ?? point.open_spread_bps);
+      }
+      if (direction === "left_buy_right_sell" && phase === "close") {
+        return Number(point.left_buy_right_sell_close_spread_bps ?? point.close_spread_bps);
+      }
+      if (direction === "right_buy_left_sell" && phase === "open") {
+        return Number(point.right_buy_left_sell_spread_bps);
+      }
+      return Number(point.right_buy_left_sell_close_spread_bps);
+    }
+
     function render() {
       const filteredItems = filteredAndSortedPairs();
       const view = paginateItems(filteredItems);
@@ -1761,7 +1903,13 @@
 
     function renderSpreadChart(points) {
       const numericPoints = points
-        .filter(point => Number.isFinite(Number(point.ts_ms)) && Number.isFinite(Number(point.open_spread_bps)) && Number.isFinite(Number(point.close_spread_bps)));
+        .filter(point => {
+          return Number.isFinite(Number(point.ts_ms))
+            && Number.isFinite(pointSpreadValue(point, "left_buy_right_sell", "open"))
+            && Number.isFinite(pointSpreadValue(point, "left_buy_right_sell", "close"))
+            && Number.isFinite(pointSpreadValue(point, "right_buy_left_sell", "open"))
+            && Number.isFinite(pointSpreadValue(point, "right_buy_left_sell", "close"));
+        });
       const latestTs = numericPoints.length > 0 ? Number(numericPoints[numericPoints.length - 1].ts_ms) : 0;
       const clean = numericPoints.filter(point => Number(point.ts_ms) >= latestTs - SPREAD_CHART_WINDOW_MS);
 
@@ -1773,7 +1921,12 @@
       const height = 220;
       const padX = 44;
       const padY = 26;
-      const values = clean.flatMap(point => [Number(point.open_spread_bps), Number(point.close_spread_bps)]);
+      const values = clean.flatMap(point => [
+        pointSpreadValue(point, "left_buy_right_sell", "open"),
+        pointSpreadValue(point, "left_buy_right_sell", "close"),
+        pointSpreadValue(point, "right_buy_left_sell", "open"),
+        pointSpreadValue(point, "right_buy_left_sell", "close"),
+      ]);
       let min = Math.min(...values);
       let max = Math.max(...values);
       if (min === max) {
@@ -1789,9 +1942,9 @@
       const timeRange = Math.max(endTs - startTs, 1);
       const xFor = tsMs => padX + ((Number(tsMs) - startTs) / timeRange) * (width - padX * 2);
       const yFor = value => height - padY - ((value - min) / (max - min)) * (height - padY * 2);
-      const pathFor = key => clean.map((point, index) => {
+      const pathFor = (direction, phase) => clean.map((point, index) => {
         const command = index === 0 ? "M" : "L";
-        return `${command} ${xFor(point.ts_ms).toFixed(2)} ${yFor(Number(point[key])).toFixed(2)}`;
+        return `${command} ${xFor(point.ts_ms).toFixed(2)} ${yFor(pointSpreadValue(point, direction, phase)).toFixed(2)}`;
       }).join(" ");
 
       const grid = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
@@ -1805,16 +1958,20 @@
 
       return `
         <div class="chart-wrap">
-          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="开仓和平仓价差历史折线图">
+          <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="双向开仓和清仓价差历史折线图">
             ${grid}
-            <path class="chart-line-open" d="${pathFor("open_spread_bps")}"></path>
-            <path class="chart-line-close" d="${pathFor("close_spread_bps")}"></path>
+            <path class="chart-line-left-open" d="${pathFor("left_buy_right_sell", "open")}"></path>
+            <path class="chart-line-left-close" d="${pathFor("left_buy_right_sell", "close")}"></path>
+            <path class="chart-line-right-open" d="${pathFor("right_buy_left_sell", "open")}"></path>
+            <path class="chart-line-right-close" d="${pathFor("right_buy_left_sell", "close")}"></path>
             <text class="chart-axis-label" x="${padX}" y="${height - 7}">${formatShortTime(clean[0].ts_ms)}</text>
             <text class="chart-axis-label" x="${width - padX - 70}" y="${height - 7}">${formatShortTime(clean[clean.length - 1].ts_ms)}</text>
           </svg>
           <div class="legend">
-            <span><i class="open-line"></i>开仓价差</span>
-            <span><i class="close-line"></i>平仓价差</span>
+            <span><i class="open-line"></i>左买右卖开</span>
+            <span><i class="open-dashed"></i>左买右卖清</span>
+            <span><i class="close-line"></i>右买左卖开</span>
+            <span><i class="close-dashed"></i>右买左卖清</span>
             <span>范围 ${formatPercentFromBps(min)} 到 ${formatPercentFromBps(max)}</span>
           </div>
         </div>
@@ -1859,12 +2016,12 @@
         <div class="detail-body">
           <section class="metric-grid" aria-label="当前指标">
             <div class="metric-card">
-              <div class="metric-label">开仓价差 (%)</div>
-              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.open_spread_bps)}</div>
+              <div class="metric-label">${escapeHtml(directionLabel(item, "left", "right"))}</div>
+              <div class="metric-value">${renderDirectionSpreadPair(item, "left_buy_right_sell")}</div>
             </div>
             <div class="metric-card">
-              <div class="metric-label">平仓价差 (%)</div>
-              <div class="metric-value">${formatSignedPercentFromBps(item.metrics.close_spread_bps)}</div>
+              <div class="metric-label">${escapeHtml(directionLabel(item, "right", "left"))}</div>
+              <div class="metric-value">${renderDirectionSpreadPair(item, "right_buy_left_sell")}</div>
             </div>
             <div class="metric-card">
               <div class="metric-label">费率差 (%)</div>
@@ -1879,7 +2036,7 @@
           ${renderPriceSnapshots(item)}
 
           <section class="detail-section">
-            <div class="section-title">最近 30 分钟价差折线图<span class="badge">${payload.spread_history.length} 点</span></div>
+            <div class="section-title">最近 30 分钟开/清价差折线图<span class="badge">${payload.spread_history.length} 点</span></div>
             ${renderSpreadChart(payload.spread_history)}
           </section>
 

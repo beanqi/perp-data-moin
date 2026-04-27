@@ -15,6 +15,10 @@ impl HistoryStore {
     pub fn record_spread(
         &mut self,
         pair_id: String,
+        left_buy_right_sell_spread_bps: f64,
+        left_buy_right_sell_close_spread_bps: f64,
+        right_buy_left_sell_spread_bps: f64,
+        right_buy_left_sell_close_spread_bps: f64,
         open_spread_bps: f64,
         close_spread_bps: f64,
         ts_ms: i64,
@@ -22,6 +26,10 @@ impl HistoryStore {
         let queue = self.spreads.entry(pair_id).or_default();
         queue.push_back(SpreadPoint {
             ts_ms,
+            left_buy_right_sell_spread_bps,
+            left_buy_right_sell_close_spread_bps,
+            right_buy_left_sell_spread_bps,
+            right_buy_left_sell_close_spread_bps,
             open_spread_bps,
             close_spread_bps,
         });

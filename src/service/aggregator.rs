@@ -202,11 +202,28 @@ fn publish_if_dirty(
     for pair_id in dirty_pairs.drain() {
         if let Some(pair) = state.pair_definition(&pair_id).cloned() {
             let view = compute_pair_view(&pair, snapshots);
-            if let (Some(open_spread_bps), Some(close_spread_bps)) =
-                (view.metrics.open_spread_bps, view.metrics.close_spread_bps)
+            if let (
+                Some(left_buy_right_sell_spread_bps),
+                Some(left_buy_right_sell_close_spread_bps),
+                Some(right_buy_left_sell_spread_bps),
+                Some(right_buy_left_sell_close_spread_bps),
+                Some(open_spread_bps),
+                Some(close_spread_bps),
+            ) = (
+                view.metrics.left_buy_right_sell_spread_bps,
+                view.metrics.left_buy_right_sell_close_spread_bps,
+                view.metrics.right_buy_left_sell_spread_bps,
+                view.metrics.right_buy_left_sell_close_spread_bps,
+                view.metrics.open_spread_bps,
+                view.metrics.close_spread_bps,
+            )
             {
                 state.history.record_spread(
                     pair_id.clone(),
+                    left_buy_right_sell_spread_bps,
+                    left_buy_right_sell_close_spread_bps,
+                    right_buy_left_sell_spread_bps,
+                    right_buy_left_sell_close_spread_bps,
                     open_spread_bps,
                     close_spread_bps,
                     view.metrics.updated_at_ms,
@@ -224,16 +241,30 @@ fn compute_pair_view(pair: &MonitorPair, snapshots: &SnapshotStore) -> MonitorPa
     let left_snapshot = snapshots.get(&pair.left.key()).cloned();
     let right_snapshot = snapshots.get(&pair.right.key()).cloned();
     let updated_at_ms = max_snapshot_time(&left_snapshot, &right_snapshot).unwrap_or_else(now_ms);
+    let left_buy_right_sell_spread_bps = spread_bps(
+        left_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
+        right_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
+    );
+    let left_buy_right_sell_close_spread_bps = spread_bps(
+        left_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
+        right_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
+    );
+    let right_buy_left_sell_spread_bps = spread_bps(
+        right_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
+        left_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
+    );
+    let right_buy_left_sell_close_spread_bps = spread_bps(
+        right_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
+        left_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
+    );
 
     let metrics = MonitorMetrics {
-        open_spread_bps: spread_bps(
-            left_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
-            right_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
-        ),
-        close_spread_bps: spread_bps(
-            left_snapshot.as_ref().and_then(|snapshot| snapshot.bid),
-            right_snapshot.as_ref().and_then(|snapshot| snapshot.ask),
-        ),
+        open_spread_bps: left_buy_right_sell_spread_bps,
+        close_spread_bps: left_buy_right_sell_close_spread_bps,
+        left_buy_right_sell_spread_bps,
+        left_buy_right_sell_close_spread_bps,
+        right_buy_left_sell_spread_bps,
+        right_buy_left_sell_close_spread_bps,
         left_funding_rate: left_snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.funding_rate),
