@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tokio::time::{MissedTickBehavior, interval, sleep};
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 use crate::domain::{DiscoveredMarket, ExchangeId, InstrumentKey, MarketKind, MarketRef};
 use crate::exchange::adapter::ExchangeAdapter;
 use crate::exchange::event::{EventSender, ExchangeEvent};
+use crate::exchange::watchdog::{MARKET_DATA_IDLE_CHECK_INTERVAL, MARKET_DATA_IDLE_TIMEOUT};
 
 const REST_BASE: &str = "https://www.okx.com";
 const PUBLIC_WS_URL: &str = "wss://ws.okx.com:8443/ws/v5/public";
@@ -466,9 +467,26 @@ async fn run_public_websocket_loop<F, Fut>(
                 send_health(&tx, true, Some(format!("okx {stream_name} connected"))).await;
                 let mut ping = interval(WS_PING_INTERVAL);
                 ping.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if last_data_at.elapsed() >= MARKET_DATA_IDLE_TIMEOUT {
+                                send_health(
+                                    &tx,
+                                    false,
+                                    Some(format!(
+                                        "okx {stream_name} idle for {}s; reconnecting",
+                                        last_data_at.elapsed().as_secs()
+                                    )),
+                                )
+                                .await;
+                                break;
+                            }
+                        }
                         _ = ping.tick() => {
                             if let Err(err) = socket.send(Message::Text("ping".into())).await {
                                 send_health(
@@ -495,8 +513,11 @@ async fn run_public_websocket_loop<F, Fut>(
                                     if is_control_payload(&text) {
                                         continue;
                                     }
-                                    if let Err(err) = handler(text.to_string(), tx.clone()).await {
-                                        debug!(stream = stream_name, error = %err, "okx websocket payload skipped");
+                                    match handler(text.to_string(), tx.clone()).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = stream_name, error = %err, "okx websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match std::str::from_utf8(&binary) {
@@ -513,8 +534,11 @@ async fn run_public_websocket_loop<F, Fut>(
                                         if is_control_payload(text) {
                                             continue;
                                         }
-                                        if let Err(err) = handler(text.to_owned(), tx.clone()).await {
-                                            debug!(stream = stream_name, error = %err, "okx websocket payload skipped");
+                                        match handler(text.to_owned(), tx.clone()).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = stream_name, error = %err, "okx websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {

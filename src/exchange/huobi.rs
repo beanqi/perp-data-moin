@@ -10,7 +10,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -18,6 +18,7 @@ use tracing::{debug, warn};
 use crate::domain::{DiscoveredMarket, ExchangeId, InstrumentKey, MarketKind, MarketRef};
 use crate::exchange::adapter::ExchangeAdapter;
 use crate::exchange::event::{EventSender, ExchangeEvent};
+use crate::exchange::watchdog::{MARKET_DATA_IDLE_CHECK_INTERVAL, MARKET_DATA_IDLE_TIMEOUT};
 
 const SPOT_REST_BASE: &str = "https://api.huobi.pro";
 const SPOT_WS_URL: &str = "wss://api.huobi.pro/ws";
@@ -400,73 +401,97 @@ async fn run_spot_ticker_stream(
                 }
 
                 send_health(&tx, true, Some("huobi spot ticker connected".to_owned())).await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
-                    match socket.next().await {
-                        Some(Ok(Message::Text(text))) => {
-                            if let Err(err) = handle_spot_market_payload(
-                                text.to_string(),
-                                &mut socket,
-                                &markets,
-                                &tx,
-                            )
-                            .await
-                            {
-                                debug!(stream = "spot ticker", error = %err, "huobi websocket payload skipped");
-                            }
-                        }
-                        Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
-                            Ok(payload) => {
-                                if let Err(err) =
-                                    handle_spot_market_payload(payload, &mut socket, &markets, &tx)
-                                        .await
-                                {
-                                    debug!(stream = "spot ticker", error = %err, "huobi websocket payload skipped");
-                                }
-                            }
-                            Err(err) => {
-                                debug!(stream = "spot ticker", error = %err, "huobi websocket payload decode failed");
-                            }
-                        },
-                        Some(Ok(Message::Ping(payload))) => {
-                            if let Err(err) = socket.send(Message::Pong(payload)).await {
+                    tokio::select! {
+                        _ = idle_check.tick() => {
+                            if last_data_at.elapsed() >= MARKET_DATA_IDLE_TIMEOUT {
                                 send_health(
                                     &tx,
                                     false,
-                                    Some(format!("huobi spot ticker pong failed: {err}")),
+                                    Some(format!(
+                                        "huobi spot ticker idle for {}s; reconnecting",
+                                        last_data_at.elapsed().as_secs()
+                                    )),
                                 )
                                 .await;
                                 break;
                             }
                         }
-                        Some(Ok(Message::Pong(_))) => {}
-                        Some(Ok(Message::Frame(_))) => {}
-                        Some(Ok(Message::Close(frame))) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("huobi spot ticker closed: {frame:?}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        Some(Err(err)) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("huobi spot ticker read failed: {err}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some("huobi spot ticker disconnected".to_owned()),
-                            )
-                            .await;
-                            break;
+                        message = socket.next() => {
+                            match message {
+                                Some(Ok(Message::Text(text))) => {
+                                    let payload = text.to_string();
+                                    let is_data = is_market_data_payload(&payload);
+                                    match handle_spot_market_payload(payload, &mut socket, &markets, &tx).await {
+                                        Ok(()) if is_data => last_data_at = Instant::now(),
+                                        Ok(()) => {}
+                                        Err(err) => {
+                                            debug!(stream = "spot ticker", error = %err, "huobi websocket payload skipped");
+                                        }
+                                    }
+                                }
+                                Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
+                                    Ok(payload) => {
+                                        let is_data = is_market_data_payload(&payload);
+                                        match handle_spot_market_payload(payload, &mut socket, &markets, &tx)
+                                        .await
+                                        {
+                                            Ok(()) if is_data => last_data_at = Instant::now(),
+                                            Ok(()) => {}
+                                            Err(err) => {
+                                                debug!(stream = "spot ticker", error = %err, "huobi websocket payload skipped");
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        debug!(stream = "spot ticker", error = %err, "huobi websocket payload decode failed");
+                                    }
+                                },
+                                Some(Ok(Message::Ping(payload))) => {
+                                    if let Err(err) = socket.send(Message::Pong(payload)).await {
+                                        send_health(
+                                            &tx,
+                                            false,
+                                            Some(format!("huobi spot ticker pong failed: {err}")),
+                                        )
+                                        .await;
+                                        break;
+                                    }
+                                }
+                                Some(Ok(Message::Pong(_))) => {}
+                                Some(Ok(Message::Frame(_))) => {}
+                                Some(Ok(Message::Close(frame))) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("huobi spot ticker closed: {frame:?}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                Some(Err(err)) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("huobi spot ticker read failed: {err}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                None => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some("huobi spot ticker disconnected".to_owned()),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -510,73 +535,97 @@ async fn run_perp_detail_stream(
                 }
 
                 send_health(&tx, true, Some("huobi perp detail connected".to_owned())).await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
-                    match socket.next().await {
-                        Some(Ok(Message::Text(text))) => {
-                            if let Err(err) = handle_perp_detail_payload(
-                                text.to_string(),
-                                &mut socket,
-                                &markets,
-                                &tx,
-                            )
-                            .await
-                            {
-                                debug!(stream = "perp detail", error = %err, "huobi websocket payload skipped");
-                            }
-                        }
-                        Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
-                            Ok(payload) => {
-                                if let Err(err) =
-                                    handle_perp_detail_payload(payload, &mut socket, &markets, &tx)
-                                        .await
-                                {
-                                    debug!(stream = "perp detail", error = %err, "huobi websocket payload skipped");
-                                }
-                            }
-                            Err(err) => {
-                                debug!(stream = "perp detail", error = %err, "huobi websocket payload decode failed");
-                            }
-                        },
-                        Some(Ok(Message::Ping(payload))) => {
-                            if let Err(err) = socket.send(Message::Pong(payload)).await {
+                    tokio::select! {
+                        _ = idle_check.tick() => {
+                            if last_data_at.elapsed() >= MARKET_DATA_IDLE_TIMEOUT {
                                 send_health(
                                     &tx,
                                     false,
-                                    Some(format!("huobi perp detail pong failed: {err}")),
+                                    Some(format!(
+                                        "huobi perp detail idle for {}s; reconnecting",
+                                        last_data_at.elapsed().as_secs()
+                                    )),
                                 )
                                 .await;
                                 break;
                             }
                         }
-                        Some(Ok(Message::Pong(_))) => {}
-                        Some(Ok(Message::Frame(_))) => {}
-                        Some(Ok(Message::Close(frame))) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("huobi perp detail closed: {frame:?}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        Some(Err(err)) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("huobi perp detail read failed: {err}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some("huobi perp detail disconnected".to_owned()),
-                            )
-                            .await;
-                            break;
+                        message = socket.next() => {
+                            match message {
+                                Some(Ok(Message::Text(text))) => {
+                                    let payload = text.to_string();
+                                    let is_data = is_market_data_payload(&payload);
+                                    match handle_perp_detail_payload(payload, &mut socket, &markets, &tx).await {
+                                        Ok(()) if is_data => last_data_at = Instant::now(),
+                                        Ok(()) => {}
+                                        Err(err) => {
+                                            debug!(stream = "perp detail", error = %err, "huobi websocket payload skipped");
+                                        }
+                                    }
+                                }
+                                Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
+                                    Ok(payload) => {
+                                        let is_data = is_market_data_payload(&payload);
+                                        match handle_perp_detail_payload(payload, &mut socket, &markets, &tx)
+                                        .await
+                                        {
+                                            Ok(()) if is_data => last_data_at = Instant::now(),
+                                            Ok(()) => {}
+                                            Err(err) => {
+                                                debug!(stream = "perp detail", error = %err, "huobi websocket payload skipped");
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        debug!(stream = "perp detail", error = %err, "huobi websocket payload decode failed");
+                                    }
+                                },
+                                Some(Ok(Message::Ping(payload))) => {
+                                    if let Err(err) = socket.send(Message::Pong(payload)).await {
+                                        send_health(
+                                            &tx,
+                                            false,
+                                            Some(format!("huobi perp detail pong failed: {err}")),
+                                        )
+                                        .await;
+                                        break;
+                                    }
+                                }
+                                Some(Ok(Message::Pong(_))) => {}
+                                Some(Ok(Message::Frame(_))) => {}
+                                Some(Ok(Message::Close(frame))) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("huobi perp detail closed: {frame:?}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                Some(Err(err)) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("huobi perp detail read failed: {err}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                None => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some("huobi perp detail disconnected".to_owned()),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -752,65 +801,89 @@ async fn run_perp_index_stream(
                 }
 
                 send_health(&tx, true, Some("huobi index connected".to_owned())).await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
-                    match socket.next().await {
-                        Some(Ok(Message::Text(text))) => {
-                            if let Err(err) = handle_perp_index_payload(
-                                text.to_string(),
-                                &mut socket,
-                                &markets,
-                                &tx,
-                            )
-                            .await
-                            {
-                                debug!(stream = "index", error = %err, "huobi websocket payload skipped");
-                            }
-                        }
-                        Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
-                            Ok(payload) => {
-                                if let Err(err) =
-                                    handle_perp_index_payload(payload, &mut socket, &markets, &tx)
-                                        .await
-                                {
-                                    debug!(stream = "index", error = %err, "huobi websocket payload skipped");
-                                }
-                            }
-                            Err(err) => {
-                                debug!(stream = "index", error = %err, "huobi websocket payload decode failed");
-                            }
-                        },
-                        Some(Ok(Message::Ping(payload))) => {
-                            if let Err(err) = socket.send(Message::Pong(payload)).await {
+                    tokio::select! {
+                        _ = idle_check.tick() => {
+                            if last_data_at.elapsed() >= MARKET_DATA_IDLE_TIMEOUT {
                                 send_health(
                                     &tx,
                                     false,
-                                    Some(format!("huobi index pong failed: {err}")),
+                                    Some(format!(
+                                        "huobi index idle for {}s; reconnecting",
+                                        last_data_at.elapsed().as_secs()
+                                    )),
                                 )
                                 .await;
                                 break;
                             }
                         }
-                        Some(Ok(Message::Pong(_))) => {}
-                        Some(Ok(Message::Frame(_))) => {}
-                        Some(Ok(Message::Close(frame))) => {
-                            send_health(&tx, false, Some(format!("huobi index closed: {frame:?}")))
-                                .await;
-                            break;
-                        }
-                        Some(Err(err)) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("huobi index read failed: {err}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            send_health(&tx, false, Some("huobi index disconnected".to_owned()))
-                                .await;
-                            break;
+                        message = socket.next() => {
+                            match message {
+                                Some(Ok(Message::Text(text))) => {
+                                    let payload = text.to_string();
+                                    let is_data = is_market_data_payload(&payload);
+                                    match handle_perp_index_payload(payload, &mut socket, &markets, &tx).await {
+                                        Ok(()) if is_data => last_data_at = Instant::now(),
+                                        Ok(()) => {}
+                                        Err(err) => {
+                                            debug!(stream = "index", error = %err, "huobi websocket payload skipped");
+                                        }
+                                    }
+                                }
+                                Some(Ok(Message::Binary(binary))) => match decode_huobi_payload(&binary) {
+                                    Ok(payload) => {
+                                        let is_data = is_market_data_payload(&payload);
+                                        match handle_perp_index_payload(payload, &mut socket, &markets, &tx)
+                                        .await
+                                        {
+                                            Ok(()) if is_data => last_data_at = Instant::now(),
+                                            Ok(()) => {}
+                                            Err(err) => {
+                                                debug!(stream = "index", error = %err, "huobi websocket payload skipped");
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        debug!(stream = "index", error = %err, "huobi websocket payload decode failed");
+                                    }
+                                },
+                                Some(Ok(Message::Ping(payload))) => {
+                                    if let Err(err) = socket.send(Message::Pong(payload)).await {
+                                        send_health(
+                                            &tx,
+                                            false,
+                                            Some(format!("huobi index pong failed: {err}")),
+                                        )
+                                        .await;
+                                        break;
+                                    }
+                                }
+                                Some(Ok(Message::Pong(_))) => {}
+                                Some(Ok(Message::Frame(_))) => {}
+                                Some(Ok(Message::Close(frame))) => {
+                                    send_health(&tx, false, Some(format!("huobi index closed: {frame:?}")))
+                                        .await;
+                                    break;
+                                }
+                                Some(Err(err)) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("huobi index read failed: {err}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                None => {
+                                    send_health(&tx, false, Some("huobi index disconnected".to_owned()))
+                                        .await;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -1279,6 +1352,10 @@ fn is_market_control_payload(payload: &str) -> bool {
         || payload.contains("\"unsubbed\"")
         || payload.contains("\"pong\"")
         || (payload.contains("\"status\":\"ok\"") && !payload.contains("\"ch\""))
+}
+
+fn is_market_data_payload(payload: &str) -> bool {
+    parse_market_ping(payload).is_none() && !is_market_control_payload(payload)
 }
 
 fn parse_spot_symbol_from_channel(channel: &str) -> Option<&str> {

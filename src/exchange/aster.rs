@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 use crate::domain::{DiscoveredMarket, ExchangeId, InstrumentKey, MarketKind, MarketRef};
 use crate::exchange::adapter::ExchangeAdapter;
 use crate::exchange::event::{EventSender, ExchangeEvent};
+use crate::exchange::watchdog::{MARKET_DATA_IDLE_CHECK_INTERVAL, MARKET_DATA_IDLE_TIMEOUT};
 
 const SPOT_REST_BASE: &str = "https://sapi.asterdex.com";
 const SPOT_WS_BASE: &str = "wss://sstream.asterdex.com";
@@ -453,63 +454,90 @@ async fn run_text_websocket_loop<F, Fut>(
         match connect_async(&url).await {
             Ok((mut socket, _)) => {
                 send_health(&tx, true, Some(format!("aster {stream_name} connected"))).await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
-                    match socket.next().await {
-                        Some(Ok(Message::Text(text))) => {
-                            if let Err(err) = handler(text.to_string(), tx.clone()).await {
-                                debug!(stream = stream_name, error = %err, "aster websocket payload skipped");
-                            }
-                        }
-                        Some(Ok(Message::Binary(binary))) => match std::str::from_utf8(&binary) {
-                            Ok(text) => {
-                                if let Err(err) = handler(text.to_owned(), tx.clone()).await {
-                                    debug!(stream = stream_name, error = %err, "aster websocket payload skipped");
-                                }
-                            }
-                            Err(err) => {
-                                debug!(stream = stream_name, error = %err, "aster websocket payload was not utf8");
-                            }
-                        },
-                        Some(Ok(Message::Ping(payload))) => {
-                            if let Err(err) = socket.send(Message::Pong(payload)).await {
+                    tokio::select! {
+                        _ = idle_check.tick() => {
+                            if last_data_at.elapsed() >= MARKET_DATA_IDLE_TIMEOUT {
                                 send_health(
                                     &tx,
                                     false,
-                                    Some(format!("aster {stream_name} pong failed: {err}")),
+                                    Some(format!(
+                                        "aster {stream_name} idle for {}s; reconnecting",
+                                        last_data_at.elapsed().as_secs()
+                                    )),
                                 )
                                 .await;
                                 break;
                             }
                         }
-                        Some(Ok(Message::Pong(_))) => {}
-                        Some(Ok(Message::Frame(_))) => {}
-                        Some(Ok(Message::Close(frame))) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("aster {stream_name} closed: {frame:?}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        Some(Err(err)) => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("aster {stream_name} read failed: {err}")),
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            send_health(
-                                &tx,
-                                false,
-                                Some(format!("aster {stream_name} disconnected")),
-                            )
-                            .await;
-                            break;
+                        message = socket.next() => {
+                            match message {
+                                Some(Ok(Message::Text(text))) => {
+                                    match handler(text.to_string(), tx.clone()).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = stream_name, error = %err, "aster websocket payload skipped");
+                                        }
+                                    }
+                                }
+                                Some(Ok(Message::Binary(binary))) => match std::str::from_utf8(&binary) {
+                                    Ok(text) => {
+                                        match handler(text.to_owned(), tx.clone()).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = stream_name, error = %err, "aster websocket payload skipped");
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        debug!(stream = stream_name, error = %err, "aster websocket payload was not utf8");
+                                    }
+                                },
+                                Some(Ok(Message::Ping(payload))) => {
+                                    if let Err(err) = socket.send(Message::Pong(payload)).await {
+                                        send_health(
+                                            &tx,
+                                            false,
+                                            Some(format!("aster {stream_name} pong failed: {err}")),
+                                        )
+                                        .await;
+                                        break;
+                                    }
+                                }
+                                Some(Ok(Message::Pong(_))) => {}
+                                Some(Ok(Message::Frame(_))) => {}
+                                Some(Ok(Message::Close(frame))) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("aster {stream_name} closed: {frame:?}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                Some(Err(err)) => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("aster {stream_name} read failed: {err}")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                                None => {
+                                    send_health(
+                                        &tx,
+                                        false,
+                                        Some(format!("aster {stream_name} disconnected")),
+                                    )
+                                    .await;
+                                    break;
+                                }
+                            }
                         }
                     }
                 }

@@ -9,3 +9,4 @@ pub mod huobi;
 pub mod kucoin;
 pub mod okx;
 pub mod registry;
+pub mod watchdog;

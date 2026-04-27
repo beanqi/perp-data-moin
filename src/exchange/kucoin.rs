@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tokio::time::{MissedTickBehavior, interval, sleep};
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 use crate::domain::{DiscoveredMarket, ExchangeId, InstrumentKey, MarketKind, MarketRef};
 use crate::exchange::adapter::ExchangeAdapter;
 use crate::exchange::event::{EventSender, ExchangeEvent};
+use crate::exchange::watchdog::{MARKET_DATA_IDLE_CHECK_INTERVAL, MARKET_DATA_IDLE_TIMEOUT};
 
 const SPOT_REST_BASE: &str = "https://api.kucoin.com";
 const PERP_REST_BASE: &str = "https://api-futures.kucoin.com";
@@ -388,9 +389,17 @@ async fn run_spot_all_tickers_stream(client: Client, markets: SharedMarketMap, t
                 let mut pinger = interval(ping_interval);
                 pinger.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 pinger.tick().await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if send_idle_reconnect(&tx, "spot all-tickers", last_data_at).await {
+                                break;
+                            }
+                        }
                         _ = pinger.tick() => {
                             if let Err(err) = send_ping(&mut socket).await {
                                 send_health(
@@ -418,8 +427,11 @@ async fn run_spot_all_tickers_stream(client: Client, markets: SharedMarketMap, t
                                         .await;
                                         break;
                                     }
-                                    if let Err(err) = handle_spot_all_tickers_message(payload, &markets, &tx).await {
-                                        debug!(stream = "spot all-tickers", error = %err, "kucoin websocket payload skipped");
+                                    match handle_spot_all_tickers_message(payload, &markets, &tx).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = "spot all-tickers", error = %err, "kucoin websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match String::from_utf8(binary.to_vec()) {
@@ -436,8 +448,11 @@ async fn run_spot_all_tickers_stream(client: Client, markets: SharedMarketMap, t
                                             .await;
                                             break;
                                         }
-                                        if let Err(err) = handle_spot_all_tickers_message(&payload, &markets, &tx).await {
-                                            debug!(stream = "spot all-tickers", error = %err, "kucoin websocket payload skipped");
+                                        match handle_spot_all_tickers_message(&payload, &markets, &tx).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = "spot all-tickers", error = %err, "kucoin websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -540,9 +555,17 @@ async fn run_spot_market_snapshot_stream(
                 let mut pinger = interval(ping_interval);
                 pinger.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 pinger.tick().await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if send_idle_reconnect(&tx, "spot market-snapshot", last_data_at).await {
+                                break;
+                            }
+                        }
                         _ = pinger.tick() => {
                             if let Err(err) = send_ping(&mut socket).await {
                                 send_health(
@@ -570,8 +593,11 @@ async fn run_spot_market_snapshot_stream(
                                         .await;
                                         break;
                                     }
-                                    if let Err(err) = handle_spot_market_snapshot_message(payload, &markets, &tx).await {
-                                        debug!(stream = "spot market-snapshot", error = %err, "kucoin websocket payload skipped");
+                                    match handle_spot_market_snapshot_message(payload, &markets, &tx).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = "spot market-snapshot", error = %err, "kucoin websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match String::from_utf8(binary.to_vec()) {
@@ -588,8 +614,11 @@ async fn run_spot_market_snapshot_stream(
                                             .await;
                                             break;
                                         }
-                                        if let Err(err) = handle_spot_market_snapshot_message(&payload, &markets, &tx).await {
-                                            debug!(stream = "spot market-snapshot", error = %err, "kucoin websocket payload skipped");
+                                        match handle_spot_market_snapshot_message(&payload, &markets, &tx).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = "spot market-snapshot", error = %err, "kucoin websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -685,9 +714,17 @@ async fn run_perp_ticker_stream(
                 let mut pinger = interval(ping_interval);
                 pinger.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 pinger.tick().await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if send_idle_reconnect(&tx, "perp ticker", last_data_at).await {
+                                break;
+                            }
+                        }
                         _ = pinger.tick() => {
                             if let Err(err) = send_ping(&mut socket).await {
                                 send_health(
@@ -715,8 +752,11 @@ async fn run_perp_ticker_stream(
                                         .await;
                                         break;
                                     }
-                                    if let Err(err) = handle_perp_ticker_message(payload, &markets, &tx).await {
-                                        debug!(stream = "perp ticker", error = %err, "kucoin websocket payload skipped");
+                                    match handle_perp_ticker_message(payload, &markets, &tx).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = "perp ticker", error = %err, "kucoin websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match String::from_utf8(binary.to_vec()) {
@@ -733,8 +773,11 @@ async fn run_perp_ticker_stream(
                                             .await;
                                             break;
                                         }
-                                        if let Err(err) = handle_perp_ticker_message(&payload, &markets, &tx).await {
-                                            debug!(stream = "perp ticker", error = %err, "kucoin websocket payload skipped");
+                                        match handle_perp_ticker_message(&payload, &markets, &tx).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = "perp ticker", error = %err, "kucoin websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -836,9 +879,17 @@ async fn run_perp_instrument_stream(
                 let mut pinger = interval(ping_interval);
                 pinger.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 pinger.tick().await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if send_idle_reconnect(&tx, "perp instrument", last_data_at).await {
+                                break;
+                            }
+                        }
                         _ = pinger.tick() => {
                             if let Err(err) = send_ping(&mut socket).await {
                                 send_health(
@@ -866,8 +917,11 @@ async fn run_perp_instrument_stream(
                                         .await;
                                         break;
                                     }
-                                    if let Err(err) = handle_perp_instrument_message(payload, &markets, &next_settles, &tx).await {
-                                        debug!(stream = "perp instrument", error = %err, "kucoin websocket payload skipped");
+                                    match handle_perp_instrument_message(payload, &markets, &next_settles, &tx).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = "perp instrument", error = %err, "kucoin websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match String::from_utf8(binary.to_vec()) {
@@ -884,8 +938,11 @@ async fn run_perp_instrument_stream(
                                             .await;
                                             break;
                                         }
-                                        if let Err(err) = handle_perp_instrument_message(&payload, &markets, &next_settles, &tx).await {
-                                            debug!(stream = "perp instrument", error = %err, "kucoin websocket payload skipped");
+                                        match handle_perp_instrument_message(&payload, &markets, &next_settles, &tx).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = "perp instrument", error = %err, "kucoin websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -981,9 +1038,17 @@ async fn run_perp_snapshot_stream(
                 let mut pinger = interval(ping_interval);
                 pinger.set_missed_tick_behavior(MissedTickBehavior::Skip);
                 pinger.tick().await;
+                let mut idle_check = interval(MARKET_DATA_IDLE_CHECK_INTERVAL);
+                idle_check.set_missed_tick_behavior(MissedTickBehavior::Skip);
+                let mut last_data_at = Instant::now();
 
                 loop {
                     tokio::select! {
+                        _ = idle_check.tick() => {
+                            if send_idle_reconnect(&tx, "perp snapshot", last_data_at).await {
+                                break;
+                            }
+                        }
                         _ = pinger.tick() => {
                             if let Err(err) = send_ping(&mut socket).await {
                                 send_health(
@@ -1011,8 +1076,11 @@ async fn run_perp_snapshot_stream(
                                         .await;
                                         break;
                                     }
-                                    if let Err(err) = handle_perp_snapshot_message(payload, &markets, &tx).await {
-                                        debug!(stream = "perp snapshot", error = %err, "kucoin websocket payload skipped");
+                                    match handle_perp_snapshot_message(payload, &markets, &tx).await {
+                                        Ok(()) => last_data_at = Instant::now(),
+                                        Err(err) => {
+                                            debug!(stream = "perp snapshot", error = %err, "kucoin websocket payload skipped");
+                                        }
                                     }
                                 }
                                 Some(Ok(Message::Binary(binary))) => match String::from_utf8(binary.to_vec()) {
@@ -1029,8 +1097,11 @@ async fn run_perp_snapshot_stream(
                                             .await;
                                             break;
                                         }
-                                        if let Err(err) = handle_perp_snapshot_message(&payload, &markets, &tx).await {
-                                            debug!(stream = "perp snapshot", error = %err, "kucoin websocket payload skipped");
+                                        match handle_perp_snapshot_message(&payload, &markets, &tx).await {
+                                            Ok(()) => last_data_at = Instant::now(),
+                                            Err(err) => {
+                                                debug!(stream = "perp snapshot", error = %err, "kucoin websocket payload skipped");
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -1587,6 +1658,27 @@ async fn send_health(tx: &EventSender, ok: bool, message: Option<String>) {
             ts_ms: now_ms(),
         })
         .await;
+}
+
+async fn send_idle_reconnect(
+    tx: &EventSender,
+    stream_name: &'static str,
+    last_data_at: Instant,
+) -> bool {
+    if last_data_at.elapsed() < MARKET_DATA_IDLE_TIMEOUT {
+        return false;
+    }
+
+    send_health(
+        tx,
+        false,
+        Some(format!(
+            "kucoin {stream_name} idle for {}s; reconnecting",
+            last_data_at.elapsed().as_secs()
+        )),
+    )
+    .await;
+    true
 }
 
 fn parse_f64(value: &str) -> Option<f64> {
