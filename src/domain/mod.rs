@@ -7,7 +7,7 @@ mod pair;
 mod quote;
 
 pub use exchange::ExchangeId;
-pub use history::{FundingSettlementRecord, SpreadPoint};
+pub use history::{FundingSettlementRecord, SpreadPoint, SpreadWindowStats};
 pub use instrument::{InstrumentKey, MarketKind};
 pub use market::{DiscoveredMarket, MarketKey, MarketRef};
 pub use metrics::{MonitorMetrics, MonitorPairView};

@@ -424,6 +424,18 @@
       content: "↑";
     }
 
+    .th-note {
+      display: block;
+      margin-top: 3px;
+      color: rgba(111, 121, 126, 0.76);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0;
+      line-height: 1.2;
+      text-transform: none;
+      white-space: nowrap;
+    }
+
     tr {
       transition: background 150ms ease;
     }
@@ -516,8 +528,8 @@
 
     .direction-spread {
       display: grid;
-      gap: 4px;
-      min-width: 128px;
+      gap: 3px;
+      min-width: 88px;
       color: var(--ink-soft);
       font-family: var(--mono);
       font-size: 12px;
@@ -527,21 +539,53 @@
     }
 
     .direction-spread-row {
-      display: flex;
-      gap: 8px;
-      align-items: baseline;
-      justify-content: space-between;
-    }
-
-    .direction-spread-label {
-      color: var(--muted);
-      font-family: Inter, system-ui, sans-serif;
-      font-weight: 850;
+      display: block;
     }
 
     .metric-value .direction-spread {
       min-width: 0;
       font-size: 13px;
+    }
+
+    .spread-extremes {
+      display: grid;
+      gap: 5px;
+      min-width: 184px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .spread-extreme-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 9px;
+      align-items: baseline;
+    }
+
+    .spread-extreme-direction {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .spread-extreme-values {
+      display: inline-flex;
+      gap: 5px;
+      align-items: baseline;
+      justify-content: flex-end;
+      min-width: 0;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .spread-extreme-divider {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .metric-value .spread-extremes {
+      min-width: 0;
     }
 
     .updated-cell {
@@ -716,6 +760,10 @@
       padding: 10px;
       border-radius: 14px;
       background: rgba(244, 239, 232, 0.72);
+    }
+
+    .mini-metric.is-wide {
+      grid-column: 1 / -1;
     }
 
     .detail-panel {
@@ -1264,6 +1312,8 @@
           <option value="direction_spread_abs">双向开仓价差绝对值</option>
           <option value="left_buy_right_sell_spread_abs">左买右卖开仓价差绝对值</option>
           <option value="right_buy_left_sell_spread_abs">右买左卖开仓价差绝对值</option>
+          <option value="spread_open_max_30m">30m 开仓最大</option>
+          <option value="spread_close_min_30m">30m 平仓最小</option>
           <option value="funding_diff_abs">费率差绝对值</option>
           <option value="index_diff_abs">指数价差绝对值</option>
           <option value="volume_24h">24h 成交额</option>
@@ -1292,6 +1342,7 @@
                 <th data-sort="symbol">标的</th>
                 <th data-sort="left_buy_right_sell_spread_abs">左买右卖 (%)</th>
                 <th data-sort="right_buy_left_sell_spread_abs">右买左卖 (%)</th>
+                <th data-sort="spread_open_max_30m">30m 极值 (%)<span class="th-note">最大 / 最小</span></th>
                 <th>当前费率 (%)</th>
                 <th data-sort="funding_diff_abs">费率差 (%)</th>
                 <th>指数价格</th>
@@ -1420,6 +1471,8 @@
       direction_spread_abs: "双向开仓价差",
       left_buy_right_sell_spread_abs: "左买右卖开仓",
       right_buy_left_sell_spread_abs: "右买左卖开仓",
+      spread_open_max_30m: "30m 开仓最大",
+      spread_close_min_30m: "30m 平仓最小",
       open_spread_abs: "双向开仓价差",
       close_spread_abs: "左买右卖清仓",
       funding_diff_abs: "费率差",
@@ -1433,6 +1486,8 @@
       direction_spread_abs: item => maxDirectionalSpreadAbs(item),
       left_buy_right_sell_spread_abs: item => metricAbs(directionOpenSpread(item, "left_buy_right_sell")),
       right_buy_left_sell_spread_abs: item => metricAbs(directionOpenSpread(item, "right_buy_left_sell")),
+      spread_open_max_30m: item => maxSpreadOpenMax30m(item),
+      spread_close_min_30m: item => minSpreadCloseMin30m(item),
       open_spread_abs: item => maxDirectionalSpreadAbs(item),
       close_spread_abs: item => metricAbs(directionCloseSpread(item, "left_buy_right_sell")),
       funding_diff_abs: item => metricAbs(item.metrics.funding_diff_bps),
@@ -1450,6 +1505,19 @@
       return value == null || Number.isNaN(Number(value)) ? Number.NEGATIVE_INFINITY : Math.abs(Number(value));
     }
 
+    function finiteValues(values) {
+      return values
+        .map(value => Number(value))
+        .filter(value => Number.isFinite(value));
+    }
+
+    function defaultSortDir(sortKey) {
+      if (sortKey === "symbol" || sortKey === "spread_close_min_30m") {
+        return "asc";
+      }
+      return "desc";
+    }
+
     function directionOpenSpread(item, direction) {
       if (direction === "left_buy_right_sell") {
         return item.metrics.left_buy_right_sell_spread_bps ?? item.metrics.open_spread_bps;
@@ -1464,17 +1532,67 @@
       return item.metrics.right_buy_left_sell_close_spread_bps;
     }
 
+    function directionOpenMax30m(item, direction) {
+      if (direction === "left_buy_right_sell") {
+        return item.metrics.left_buy_right_sell_open_spread_max_30m_bps;
+      }
+      return item.metrics.right_buy_left_sell_open_spread_max_30m_bps;
+    }
+
+    function directionCloseMin30m(item, direction) {
+      if (direction === "left_buy_right_sell") {
+        return item.metrics.left_buy_right_sell_close_spread_min_30m_bps;
+      }
+      return item.metrics.right_buy_left_sell_close_spread_min_30m_bps;
+    }
+
+    function maxSpreadOpenMax30m(item) {
+      const values = finiteValues([
+        directionOpenMax30m(item, "left_buy_right_sell"),
+        directionOpenMax30m(item, "right_buy_left_sell"),
+      ]);
+      return values.length ? Math.max(...values) : Number.NEGATIVE_INFINITY;
+    }
+
+    function minSpreadCloseMin30m(item) {
+      const values = finiteValues([
+        directionCloseMin30m(item, "left_buy_right_sell"),
+        directionCloseMin30m(item, "right_buy_left_sell"),
+      ]);
+      return values.length ? Math.min(...values) : Number.POSITIVE_INFINITY;
+    }
+
     function renderDirectionSpreadPair(item, direction) {
       return `
         <div class="direction-spread">
           <div class="direction-spread-row">
-            <span class="direction-spread-label">开</span>
             ${formatSignedPercentFromBps(directionOpenSpread(item, direction))}
           </div>
           <div class="direction-spread-row">
-            <span class="direction-spread-label">清</span>
             ${formatSignedPercentFromBps(directionCloseSpread(item, direction))}
           </div>
+        </div>
+      `;
+    }
+
+    function renderSpreadExtremeRow(item, direction, label) {
+      return `
+        <div class="spread-extreme-row">
+          <span class="spread-extreme-direction">${label}</span>
+          <span class="spread-extreme-values">
+            ${formatSignedPercentFromBps(directionOpenMax30m(item, direction))}
+            <span class="spread-extreme-divider">/</span>
+            ${formatSignedPercentFromBps(directionCloseMin30m(item, direction))}
+          </span>
+        </div>
+      `;
+    }
+
+    function renderSpreadExtremes(item) {
+      return `
+        <div class="spread-extremes">
+          ${renderSpreadExtremeRow(item, "left_buy_right_sell", "左买右卖")}
+          ${renderSpreadExtremeRow(item, "right_buy_left_sell", "右买左卖")}
         </div>
       `;
     }
@@ -1745,6 +1863,14 @@
         if (typeof leftValue === "string" || typeof rightValue === "string") {
           result = String(leftValue).localeCompare(String(rightValue));
         } else {
+          const leftMissing = !Number.isFinite(leftValue);
+          const rightMissing = !Number.isFinite(rightValue);
+          if (leftMissing || rightMissing) {
+            if (leftMissing && rightMissing) {
+              return 0;
+            }
+            return leftMissing ? 1 : -1;
+          }
           result = leftValue - rightValue;
         }
 
@@ -1901,7 +2027,7 @@
       if (!items.length) {
         elements.tbody.innerHTML = `
           <tr>
-            <td colspan="9">
+            <td colspan="10">
               <div class="empty-state">
                 <h3>没有匹配的监控组合</h3>
                 <p>试试放宽筛选条件、切换交易所，或清空关键字。</p>
@@ -1926,6 +2052,7 @@
             </td>
             <td>${renderDirectionSpreadPair(item, "left_buy_right_sell")}</td>
             <td>${renderDirectionSpreadPair(item, "right_buy_left_sell")}</td>
+            <td>${renderSpreadExtremes(item)}</td>
             <td><div class="pair-value">${pairValue(item.metrics.left_funding_rate, item.metrics.right_funding_rate, formatRate)}</div></td>
             <td>${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</td>
             <td><div class="pair-value">${pairValue(item.metrics.left_index_price, item.metrics.right_index_price, formatPrice)}</div></td>
@@ -1968,6 +2095,10 @@
               <div class="mini-metric">
                 <div class="metric-label">右买左卖</div>
                 <div class="metric-value">${renderDirectionSpreadPair(item, "right_buy_left_sell")}</div>
+              </div>
+              <div class="mini-metric is-wide">
+                <div class="metric-label">30m 极值</div>
+                <div class="metric-value">${renderSpreadExtremes(item)}</div>
               </div>
               <div class="mini-metric">
                 <div class="metric-label">费率差</div>
@@ -2453,7 +2584,7 @@
         state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
       } else {
         state.sortKey = sortKey;
-        state.sortDir = sortKey === "symbol" ? "asc" : "desc";
+        state.sortDir = defaultSortDir(sortKey);
       }
       state.currentPage = 1;
       render();
@@ -2479,7 +2610,7 @@
 
     elements.sortSelect.addEventListener("change", event => {
       state.sortKey = event.target.value;
-      state.sortDir = state.sortKey === "symbol" ? "asc" : "desc";
+      state.sortDir = defaultSortDir(state.sortKey);
       state.currentPage = 1;
       render();
     });

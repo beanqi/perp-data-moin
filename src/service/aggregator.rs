@@ -12,7 +12,9 @@ use crate::domain::{
 };
 use crate::exchange::event::ExchangeEvent;
 use crate::store::snapshot_store::SnapshotStore;
-use crate::store::view_store::{ExchangeStatus, PairDetailView, RuntimeState, SummaryView};
+use crate::store::view_store::{
+    ExchangeStatus, PairDetailView, RuntimeState, SummaryView, apply_spread_window_stats,
+};
 
 const SNAPSHOT_INTERVAL_MS: u64 = 250;
 
@@ -201,8 +203,8 @@ fn publish_if_dirty(
 
     for pair_id in dirty_pairs.drain() {
         if let Some(pair) = state.pair_definition(&pair_id).cloned() {
-            let view = compute_pair_view(&pair, snapshots);
-            if let (
+            let mut view = compute_pair_view(&pair, snapshots);
+            let spread_window_stats = if let (
                 Some(left_buy_right_sell_spread_bps),
                 Some(left_buy_right_sell_close_spread_bps),
                 Some(right_buy_left_sell_spread_bps),
@@ -216,8 +218,7 @@ fn publish_if_dirty(
                 view.metrics.right_buy_left_sell_close_spread_bps,
                 view.metrics.open_spread_bps,
                 view.metrics.close_spread_bps,
-            )
-            {
+            ) {
                 state.history.record_spread(
                     pair_id.clone(),
                     left_buy_right_sell_spread_bps,
@@ -227,8 +228,11 @@ fn publish_if_dirty(
                     open_spread_bps,
                     close_spread_bps,
                     view.metrics.updated_at_ms,
-                );
-            }
+                )
+            } else {
+                state.history.spread_window_stats(&pair_id)
+            };
+            apply_spread_window_stats(&mut view, spread_window_stats);
             state.update_pair_view(&pair_id, view);
         }
     }
@@ -265,6 +269,10 @@ fn compute_pair_view(pair: &MonitorPair, snapshots: &SnapshotStore) -> MonitorPa
         left_buy_right_sell_close_spread_bps,
         right_buy_left_sell_spread_bps,
         right_buy_left_sell_close_spread_bps,
+        left_buy_right_sell_open_spread_max_30m_bps: None,
+        left_buy_right_sell_close_spread_min_30m_bps: None,
+        right_buy_left_sell_open_spread_max_30m_bps: None,
+        right_buy_left_sell_close_spread_min_30m_bps: None,
         left_funding_rate: left_snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.funding_rate),

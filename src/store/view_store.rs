@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::config::DisplaySort;
 use crate::domain::{
     ExchangeId, FundingSettlementRecord, MarketKey, MonitorPair, MonitorPairView, SpreadPoint,
+    SpreadWindowStats,
 };
 use crate::store::history_store::HistoryStore;
 
@@ -12,6 +13,17 @@ pub struct ExchangeStatus {
     pub ok: bool,
     pub message: Option<String>,
     pub updated_at_ms: i64,
+}
+
+pub fn apply_spread_window_stats(view: &mut MonitorPairView, stats: SpreadWindowStats) {
+    view.metrics.left_buy_right_sell_open_spread_max_30m_bps =
+        stats.left_buy_right_sell_open_spread_max_bps;
+    view.metrics.left_buy_right_sell_close_spread_min_30m_bps =
+        stats.left_buy_right_sell_close_spread_min_bps;
+    view.metrics.right_buy_left_sell_open_spread_max_30m_bps =
+        stats.right_buy_left_sell_open_spread_max_bps;
+    view.metrics.right_buy_left_sell_close_spread_min_30m_bps =
+        stats.right_buy_left_sell_close_spread_min_bps;
 }
 
 #[derive(Debug, Clone, Default)]
