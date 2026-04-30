@@ -547,6 +547,43 @@
       font-size: 13px;
     }
 
+    .direction-spread-stack {
+      display: grid;
+      gap: 6px;
+      min-width: 216px;
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .direction-spread-line {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: baseline;
+    }
+
+    .direction-spread-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .direction-spread-values {
+      display: inline-flex;
+      gap: 9px;
+      align-items: baseline;
+      justify-content: flex-end;
+      min-width: 0;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .direction-spread-divider {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
     .spread-extremes {
       display: grid;
       gap: 5px;
@@ -786,6 +823,59 @@
       background:
         radial-gradient(circle at 92% 12%, rgba(247, 228, 191, 0.18), transparent 30%),
         linear-gradient(135deg, #162328 0%, #0f4b48 100%);
+    }
+
+    .detail-head-top {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .strategy-actions {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .strategy-copy-button {
+      min-height: 32px;
+      padding: 0 11px;
+      border: 1px solid rgba(255, 250, 241, 0.22);
+      border-radius: 999px;
+      color: #fffaf1;
+      background: rgba(255, 250, 241, 0.12);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, opacity 160ms ease;
+    }
+
+    .strategy-copy-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(255, 250, 241, 0.38);
+      background: rgba(255, 250, 241, 0.2);
+    }
+
+    .strategy-copy-button:disabled {
+      opacity: 0.78;
+      cursor: default;
+    }
+
+    .strategy-copy-button.is-copied {
+      border-color: rgba(215, 239, 234, 0.52);
+      color: #d7efea;
+      background: rgba(15, 118, 110, 0.46);
+    }
+
+    .strategy-copy-button.is-error {
+      border-color: rgba(247, 228, 191, 0.56);
+      color: #f7e4bf;
+      background: rgba(180, 35, 24, 0.34);
     }
 
     .detail-symbol {
@@ -1340,8 +1430,7 @@
             <thead>
               <tr>
                 <th data-sort="symbol">标的</th>
-                <th data-sort="left_buy_right_sell_spread_abs">左买右卖 (%)</th>
-                <th data-sort="right_buy_left_sell_spread_abs">右买左卖 (%)</th>
+                <th data-sort="direction_spread_abs">开清价差 (%)<span class="th-note">左买右卖 / 右买左卖</span></th>
                 <th data-sort="spread_open_max_30m">30m 极值 (%)<span class="th-note">最大 / 最小</span></th>
                 <th>当前费率 (%)</th>
                 <th data-sort="funding_diff_abs">费率差 (%)</th>
@@ -1451,6 +1540,7 @@
       health: null,
       selectedPairId: null,
       detailPairId: null,
+      detailItem: null,
       detailRequestId: 0,
       detailLoadedAt: 0,
       sortKey: "direction_spread_abs",
@@ -1571,6 +1661,28 @@
           <div class="direction-spread-row">
             ${formatSignedPercentFromBps(directionCloseSpread(item, direction))}
           </div>
+        </div>
+      `;
+    }
+
+    function renderDirectionSpreadLine(item, direction, label) {
+      return `
+        <div class="direction-spread-line">
+          <span class="direction-spread-label">${label}</span>
+          <span class="direction-spread-values">
+            ${formatSignedPercentFromBps(directionOpenSpread(item, direction))}
+            <span class="direction-spread-divider">/</span>
+            ${formatSignedPercentFromBps(directionCloseSpread(item, direction))}
+          </span>
+        </div>
+      `;
+    }
+
+    function renderDirectionSpreadStack(item) {
+      return `
+        <div class="direction-spread-stack">
+          ${renderDirectionSpreadLine(item, "left_buy_right_sell", "左买右卖")}
+          ${renderDirectionSpreadLine(item, "right_buy_left_sell", "右买左卖")}
         </div>
       `;
     }
@@ -1723,6 +1835,94 @@
 
     function legForSide(item, side) {
       return side === "left" ? item.pair.left : item.pair.right;
+    }
+
+    function strategyTypeForLeg(leg) {
+      return leg?.instrument?.market_kind === "spot" ? "S" : "F";
+    }
+
+    function strategyExchange(exchange) {
+      const value = String(exchange || "").toLowerCase();
+      return value === "huobi" ? "htx" : value;
+    }
+
+    function strategyName(item) {
+      const base = item?.pair?.left?.instrument?.base || item?.pair?.canonical_symbol?.split("/")?.[0] || "";
+      return String(base).toUpperCase();
+    }
+
+    function buildStrategyCopyText(item, direction) {
+      const buySide = direction === "reverse" ? "right" : "left";
+      const sellSide = direction === "reverse" ? "left" : "right";
+      const buyLeg = legForSide(item, buySide);
+      const sellLeg = legForSide(item, sellSide);
+      const strategy = {
+        type: `${strategyTypeForLeg(buyLeg)}${strategyTypeForLeg(sellLeg)}`,
+        name: strategyName(item),
+        buyEx: strategyExchange(buyLeg.exchange),
+        sellEx: strategyExchange(sellLeg.exchange),
+      };
+      return `ASTRO-QUICK-COPY:\n${JSON.stringify(strategy, null, 2)}`;
+    }
+
+    async function writeClipboardText(text) {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return;
+        } catch (error) {
+          // Fall through to the textarea path for older browser permissions.
+        }
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.top = "-1000px";
+      textarea.style.left = "-1000px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      if (!copied) {
+        throw new Error("clipboard unavailable");
+      }
+    }
+
+    async function handleStrategyCopy(event) {
+      const button = event.target.closest("[data-strategy-direction]");
+      if (!button) {
+        return;
+      }
+
+      const item = state.detailItem;
+      if (!item) {
+        return;
+      }
+
+      const defaultLabel = button.dataset.copyLabel || button.textContent;
+      const copiedLabel = button.dataset.strategyDirection === "reverse" ? "已复制反向" : "已复制正向";
+      const text = buildStrategyCopyText(item, button.dataset.strategyDirection);
+      button.disabled = true;
+      button.classList.remove("is-copied", "is-error");
+      try {
+        await writeClipboardText(text);
+        button.textContent = copiedLabel;
+        button.classList.add("is-copied");
+      } catch (error) {
+        button.textContent = "复制失败";
+        button.classList.add("is-error");
+      }
+
+      window.setTimeout(() => {
+        if (!button.isConnected) {
+          return;
+        }
+        button.textContent = defaultLabel;
+        button.disabled = false;
+        button.classList.remove("is-copied", "is-error");
+      }, 1200);
     }
 
     function directionLabel(item, buySide, sellSide) {
@@ -2027,7 +2227,7 @@
       if (!items.length) {
         elements.tbody.innerHTML = `
           <tr>
-            <td colspan="10">
+            <td colspan="9">
               <div class="empty-state">
                 <h3>没有匹配的监控组合</h3>
                 <p>试试放宽筛选条件、切换交易所，或清空关键字。</p>
@@ -2050,8 +2250,7 @@
               </div>
               <div class="combo-line">${escapeHtml(comboLabel(item))}</div>
             </td>
-            <td>${renderDirectionSpreadPair(item, "left_buy_right_sell")}</td>
-            <td>${renderDirectionSpreadPair(item, "right_buy_left_sell")}</td>
+            <td>${renderDirectionSpreadStack(item)}</td>
             <td>${renderSpreadExtremes(item)}</td>
             <td><div class="pair-value">${pairValue(item.metrics.left_funding_rate, item.metrics.right_funding_rate, formatRate)}</div></td>
             <td>${formatSignedPercentFromBps(item.metrics.funding_diff_bps)}</td>
@@ -2154,6 +2353,7 @@
     }
 
     function renderDetailIdle(title, description) {
+      state.detailItem = null;
       setDetailPanelHtml(`
         <div class="detail-head">
           <div class="badge badge-warn">等待选择</div>
@@ -2164,6 +2364,7 @@
     }
 
     function renderDetailLoading() {
+      state.detailItem = null;
       setDetailPanelHtml(`
         <div class="detail-head">
           <div class="badge">正在加载</div>
@@ -2437,6 +2638,7 @@
 
     function renderDetail(payload, options = {}) {
       if (!payload.item) {
+        state.detailItem = null;
         setDetailPanelHtml(`
           <div class="detail-head">
             <div class="badge badge-warn">未找到</div>
@@ -2448,9 +2650,16 @@
       }
 
       const item = payload.item;
+      state.detailItem = item;
       setDetailPanelHtml(`
         <div class="detail-head">
-          <div class="badge">${pairKindLabel(item.pair.kind)}</div>
+          <div class="detail-head-top">
+            <div class="badge">${pairKindLabel(item.pair.kind)}</div>
+            <div class="strategy-actions" aria-label="复制策略">
+              <button class="strategy-copy-button" type="button" data-strategy-direction="forward" data-copy-label="复制正向">复制正向</button>
+              <button class="strategy-copy-button" type="button" data-strategy-direction="reverse" data-copy-label="复制反向">复制反向</button>
+            </div>
+          </div>
           <div class="detail-symbol">${escapeHtml(item.pair.canonical_symbol)}</div>
           <div class="detail-combo">${escapeHtml(comboLabel(item))}<br>最后更新 ${formatTime(item.metrics.updated_at_ms)}</div>
         </div>
@@ -2560,6 +2769,7 @@
         state.detailLoadedAt = Date.now();
         renderDetail(payload, { preserveScroll });
       } catch (error) {
+        state.detailItem = null;
         setDetailPanelHtml(`
           <div class="detail-head">
             <div class="badge badge-warn">加载失败</div>
@@ -2657,6 +2867,7 @@
 
     elements.tbody.addEventListener("click", handlePairSelection);
     elements.mobileList.addEventListener("click", handlePairSelection);
+    elements.detailPanel.addEventListener("click", handleStrategyCopy);
     elements.detailPanel.addEventListener("pointermove", handleSpreadChartPointerMove);
     elements.detailPanel.addEventListener("pointerout", handleSpreadChartPointerOut);
 
